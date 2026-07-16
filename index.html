@@ -225,6 +225,16 @@
   <div id="main">
     <div id="leftrail">
       <div class="rail-section">
+        <div class="rail-title">Basemap</div>
+        <div class="field" style="margin-bottom:0;">
+          <select id="basemap-select">
+            <option value="topo">Topographic (terrain shading)</option>
+            <option value="streets">Streets (OpenStreetMap)</option>
+            <option value="dark">Dark tactical</option>
+          </select>
+        </div>
+      </div>
+      <div class="rail-section">
         <div class="rail-title">Layers</div>
         <label class="layer-row"><input type="checkbox" data-layer="radio" checked><span class="layer-swatch" style="background:#4a9edd;"></span>Comms coverage</label>
         <label class="layer-row"><input type="checkbox" data-layer="radar" checked><span class="layer-swatch" style="background:#5fd08a;"></span>Radar coverage</label>
@@ -357,10 +367,28 @@ const layerVisible = { radio:true, radar:true, jammer:true, gbad:true, los:true,
 const map = L.map('map', { zoomControl:true, attributionControl:true, worldCopyJump:true })
   .setView([53.3498, -7.8], 7); // Ireland-ish default view
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; OpenStreetMap contributors &copy; CARTO',
-  maxZoom:19, subdomains:'abcd'
-}).addTo(map);
+const BASEMAPS = {
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom:17, subdomains:'abc',
+    attribution:'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)'
+  }),
+  streets: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom:19, subdomains:'abc',
+    attribution:'&copy; OpenStreetMap contributors'
+  }),
+  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom:19, subdomains:'abcd',
+    attribution:'&copy; OpenStreetMap contributors &copy; CARTO'
+  })
+};
+let activeBasemap = null;
+function setBasemap(key){
+  if (activeBasemap) map.removeLayer(activeBasemap);
+  activeBasemap = BASEMAPS[key] || BASEMAPS.topo;
+  activeBasemap.addTo(map);
+  activeBasemap.bringToBack();
+}
+setBasemap('topo');
 
 const markerLayer = L.layerGroup().addTo(map);
 const losLayer = L.layerGroup().addTo(map);
@@ -645,7 +673,7 @@ function iconFor(node){
   const color = TYPE_COLOR[node.type];
   const glyph = { radio:'R', radar:'\u25CE', jammer:'J', gbad:'\u2620' }[node.type] || '?';
   return L.divIcon({
-    className:'', html:'<div class="node-marker" style="width:26px;height:26px;background:'+color+'22;color:'+color+';">'+glyph+'</div>',
+    className:'', html:'<div class="node-marker" style="width:26px;height:26px;background:#0d1212;color:'+color+';border-color:'+color+';">'+glyph+'</div>',
     iconSize:[26,26], iconAnchor:[13,13]
   });
 }
@@ -655,7 +683,17 @@ function rebuildMarkers(){
   for (const k in markerRefs) delete markerRefs[k];
   nodes.forEach(function(node){
     const m = L.marker([node.lat,node.lng], { icon:iconFor(node), draggable:true });
-    m.on('click', function(){ selectNode(node.id); });
+    m.on('click', function(){
+      if (mode==='los'){
+        if (losPoints.length>=2){ losPoints=[]; losResult=null; }
+        losPoints.push({ lat:node.lat, lng:node.lng, nodeId:node.id });
+        toast((losPoints.length===1?'Point A':'Point B') + ' set: ' + node.name);
+        if (losPoints.length===2) runLOS();
+        scheduleRedraw();
+        return;
+      }
+      selectNode(node.id);
+    });
     m.on('drag', function(e){ node.lat = e.target.getLatLng().lat; node.lng = e.target.getLatLng().lng; scheduleRedraw(); });
     m.on('dragend', function(){ if (node.type!=='gbad') invalidateCoverage(node); renderInspector(); renderNodeList(); });
     if (layerVisible.labels){
@@ -902,8 +940,9 @@ function nearestNodeWithin(lat,lng,km){
   return best;
 }
 function runLOS(){
-  const nodeA = nearestNodeWithin(losPoints[0].lat, losPoints[0].lng, 0.08);
-  const nodeB = nearestNodeWithin(losPoints[1].lat, losPoints[1].lng, 0.08);
+  const ptA = losPoints[0], ptB = losPoints[1];
+  const nodeA = ptA.nodeId ? nodes.find(function(n){ return n.id===ptA.nodeId; }) : nearestNodeWithin(ptA.lat, ptA.lng, 0.08);
+  const nodeB = ptB.nodeId ? nodes.find(function(n){ return n.id===ptB.nodeId; }) : nearestNodeWithin(ptB.lat, ptB.lng, 0.08);
   if (nodeA) losParams.heightA = nodeA.heightAglM!=null ? nodeA.heightAglM : 10;
   if (nodeB) losParams.heightB = nodeB.heightAglM!=null ? nodeB.heightAglM : 2;
   losLoading = true;
@@ -919,7 +958,9 @@ function runLOS(){
 map.on('click', function(e){
   const lat = e.latlng.lat, lng = e.latlng.lng;
   if (mode==='los'){
+    if (losPoints.length>=2){ losPoints=[]; losResult=null; } // 3rd click starts a fresh analysis
     losPoints.push({lat,lng});
+    toast((losPoints.length===1?'Point A':'Point B') + ' set on open ground');
     if (losPoints.length===2){
       runLOS();
     }
@@ -948,6 +989,9 @@ document.querySelectorAll('[data-layer]').forEach(function(cb){
     if (cb.dataset.layer==='labels') rebuildMarkers();
     scheduleRedraw();
   });
+});
+document.getElementById('basemap-select').addEventListener('change', function(e){
+  setBasemap(e.target.value);
 });
 
 /* ---------------- Right panel tabs ---------------- */
