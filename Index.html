@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COOPERAGE // RF Planning &amp; Effects Visualisation</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d0d;
+    --panel:#111616;
+    --panel-2:#161d1d;
+    --line:#233030;
+    --text:#dbe4e0;
+    --muted:#7d8f8a;
+    --scan:#5fd08a;
+    --amber:#e0a838;
+    --red:#e0524a;
+    --blue:#4a9edd;
+    --purple:#b285e0;
+    --mono:'Share Tech Mono', monospace;
+    --disp:'Rajdhani', sans-serif;
+    --body:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--body);overflow:hidden;}
+  #app{position:relative;width:100vw;height:100vh;display:flex;flex-direction:column;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    height:52px;flex:0 0 52px;display:flex;align-items:center;gap:18px;
+    background:linear-gradient(180deg,#12191a,#0d1212);
+    border-bottom:1px solid var(--line);padding:0 16px;z-index:1000;position:relative;
+  }
+  #logo{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:1.5px;color:var(--text);}
+  #logo .ring{position:relative;width:22px;height:22px;border-radius:50%;border:2px solid var(--scan);}
+  #logo .ring::after{
+    content:'';position:absolute;top:50%;left:50%;width:9px;height:1.5px;background:var(--scan);
+    transform-origin:0 50%;transform:rotate(0deg);animation:sweep 2.4s linear infinite;
+  }
+  @keyframes sweep{to{transform:rotate(360deg);}}
+  #logo .sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;font-weight:400;margin-top:2px;}
+  .topdivider{width:1px;align-self:stretch;background:var(--line);margin:10px 0;flex:0 0 auto;}
+  #modebar{display:flex;gap:6px;overflow-x:auto;flex:1 1 auto;min-width:0;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  #modebar::-webkit-scrollbar{display:none;}
+  .mode-btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--muted);
+    background:transparent;border:1px solid var(--line);padding:7px 12px;cursor:pointer;
+    text-transform:uppercase;transition:.15s;flex:0 0 auto;white-space:nowrap;
+  }
+  .mode-btn:hover{color:var(--text);border-color:var(--muted);}
+  .mode-btn.active{color:var(--bg);background:var(--scan);border-color:var(--scan);}
+  #coords{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.5px;flex:0 0 auto;}
+  #coords b{color:var(--scan);font-weight:400;}
+  #logo{flex:0 0 auto;}
+  .mobile-only{display:none;}
+  #drawer-backdrop{display:none;}
+
+  @media (max-width:800px){
+    #coords{display:none;}
+    .mobile-only{display:inline-flex;align-items:center;justify-content:center;}
+    #leftrail, #rightpanel{
+      position:fixed;top:52px;bottom:0;width:84vw;max-width:320px;z-index:1500;
+      transition:transform .25s ease;box-shadow:0 0 24px rgba(0,0,0,.65);
+    }
+    #leftrail{left:0;transform:translateX(-101%);}
+    #leftrail.open{transform:translateX(0);}
+    #rightpanel{right:0;transform:translateX(101%);}
+    #rightpanel.open{transform:translateX(0);}
+    #mapwrap{width:100%;}
+    #drawer-backdrop{
+      display:block;position:fixed;top:52px;left:0;right:0;bottom:0;
+      background:rgba(0,0,0,0);pointer-events:none;transition:background .25s ease;z-index:1400;
+    }
+    #drawer-backdrop.show{background:rgba(0,0,0,.5);pointer-events:auto;}
+  }
+
+  /* ---------- Layout ---------- */
+  #main{flex:1;display:flex;min-height:0;position:relative;}
+
+  /* left rail: layers + asset library */
+  #leftrail{
+    width:250px;flex:0 0 250px;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  .rail-section{border-bottom:1px solid var(--line);padding:12px 14px;}
+  .rail-title{
+    font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--scan);
+    text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;
+  }
+  .rail-title::before{content:'';width:6px;height:6px;background:var(--scan);display:inline-block;}
+  .layer-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;color:var(--text);}
+  .layer-row input[type=checkbox]{accent-color:var(--scan);width:14px;height:14px;cursor:pointer;}
+  .layer-swatch{width:10px;height:10px;border-radius:2px;flex:0 0 auto;}
+  .asset-btn{
+    display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:12px;border-radius:2px;transition:.15s;
+  }
+  .asset-btn:hover{border-color:var(--scan);background:#182121;}
+  .asset-btn small{color:var(--muted);font-family:var(--mono);font-size:10px;}
+  .asset-cat{font-size:9px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin:10px 0 4px;font-family:var(--mono);}
+
+  /* map */
+  #mapwrap{flex:1;position:relative;min-width:0;}
+  #map{position:absolute;inset:0;background:#0a0d0d;}
+  #overlay-canvas{position:absolute;top:0;left:0;pointer-events:none;z-index:450;}
+  #crosshair-hint{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(10,13,13,.85);border:1px solid var(--scan);color:var(--scan);
+    font-family:var(--mono);font-size:11px;padding:6px 14px;letter-spacing:.5px;z-index:900;display:none;
+  }
+
+  /* right panel */
+  #rightpanel{
+    width:300px;flex:0 0 300px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  #rightpanel .rp-tabs{display:flex;border-bottom:1px solid var(--line);}
+  .rp-tab{
+    flex:1;text-align:center;padding:10px 4px;font-family:var(--mono);font-size:10px;letter-spacing:1px;
+    color:var(--muted);cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;
+  }
+  .rp-tab.active{color:var(--scan);border-bottom-color:var(--scan);}
+  #rp-body{flex:1;overflow-y:auto;padding:14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:4px;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;}
+  .field input[type=text], .field input[type=number], .field select{
+    width:100%;background:#0d1212;border:1px solid var(--line);color:var(--text);
+    padding:7px 8px;font-size:12.5px;border-radius:2px;font-family:var(--body);
+  }
+  .field input[type=range]{width:100%;accent-color:var(--scan);}
+  .field .rangeval{float:right;font-family:var(--mono);color:var(--scan);font-size:11px;}
+  .fieldrow{display:flex;gap:8px;}
+  .fieldrow .field{flex:1;}
+  .btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;
+    padding:9px 10px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);
+    cursor:pointer;border-radius:2px;width:100%;margin-top:6px;transition:.15s;
+  }
+  .btn:hover{border-color:var(--scan);color:var(--scan);}
+  .btn.primary{background:var(--scan);color:#0a0d0d;border-color:var(--scan);font-weight:600;}
+  .btn.primary:hover{background:#7bdba0;color:#0a0d0d;}
+  .btn.danger:hover{border-color:var(--red);color:var(--red);}
+  .btn-row{display:flex;gap:6px;}
+  .btn-row .btn{margin-top:0;}
+  .empty-state{color:var(--muted);font-size:12px;text-align:center;padding:40px 10px;line-height:1.6;}
+  .empty-state .ico{font-size:26px;display:block;margin-bottom:10px;opacity:.5;}
+  .node-list-item{
+    display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--line);
+    margin-bottom:6px;border-radius:2px;cursor:pointer;background:var(--panel-2);
+  }
+  .node-list-item:hover{border-color:var(--muted);}
+  .node-list-item.sel{border-color:var(--scan);}
+  .node-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+  .node-list-item .nname{font-size:12px;flex:1;}
+  .node-list-item .ntype{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;}
+  .section-label{font-family:var(--mono);font-size:10px;color:var(--scan);letter-spacing:1.5px;text-transform:uppercase;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line);}
+  .section-label:first-child{margin-top:0;padding-top:0;border-top:none;}
+  #profile-canvas-wrap{background:#0d1212;border:1px solid var(--line);border-radius:2px;padding:8px;}
+  .readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;padding:4px 0;border-bottom:1px dashed var(--line);}
+  .readout b{color:var(--text);font-weight:400;}
+  .readout.ok b{color:var(--scan);}
+  .readout.bad b{color:var(--red);}
+  .badge{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:2px 8px;border-radius:2px;text-transform:uppercase;}
+  .badge.ok{background:rgba(95,208,138,.15);color:var(--scan);border:1px solid var(--scan);}
+  .badge.bad{background:rgba(224,82,74,.15);color:var(--red);border:1px solid var(--red);}
+
+  /* corner-bracket HUD framing for panels */
+  .hud-frame{position:relative;}
+  .hud-frame::before,.hud-frame::after{
+    content:'';position:absolute;width:8px;height:8px;border:1px solid var(--scan);opacity:.6;pointer-events:none;
+  }
+  .hud-frame::before{top:-1px;left:-1px;border-right:none;border-bottom:none;}
+  .hud-frame::after{bottom:-1px;right:-1px;border-left:none;border-top:none;}
+
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-track{background:var(--panel);}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#12191a;border:1px solid var(--scan);color:var(--scan);font-family:var(--mono);
+    font-size:12px;padding:9px 18px;border-radius:2px;z-index:2000;opacity:0;transition:opacity .25s;pointer-events:none;
+  }
+  #toast.show{opacity:1;}
+
+  .leaflet-container{background:#0a0d0d;font-family:var(--body);}
+  .leaflet-control-attribution{background:rgba(10,13,13,.7)!important;color:var(--muted)!important;font-size:9px!important;}
+  .leaflet-control-attribution a{color:var(--muted)!important;}
+  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important;}
+
+  .node-marker{
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:13px;font-weight:700;
+    border-radius:50%;border:2px solid #0a0d0d;box-shadow:0 0 0 1.5px currentColor,0 0 8px rgba(0,0,0,.6);
+  }
+  .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:2px;}
+  .leaflet-popup-tip{background:var(--panel);}
+  .leaflet-popup-content{font-family:var(--body);font-size:12px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div id="logo"><span class="ring"></span>COOPERAGE<span class="sub" style="margin-left:4px;">RF &amp; EFFECTS PLANNER</span></div>
+    <button class="mode-btn mobile-only" id="btn-layers-toggle" title="Layers &amp; assets">&#9776;</button>
+    <div class="topdivider"></div>
+    <div id="modebar">
+      <button class="mode-btn active" data-mode="select">Select</button>
+      <button class="mode-btn" data-mode="radio">+ Radio</button>
+      <button class="mode-btn" data-mode="radar">+ Radar</button>
+      <button class="mode-btn" data-mode="jammer">+ Jammer</button>
+      <button class="mode-btn" data-mode="gbad">+ GBAD</button>
+      <button class="mode-btn" data-mode="los">LOS Tool</button>
+    </div>
+    <div id="coords">LAT <b id="coord-lat">--</b>&nbsp;&nbsp;LNG <b id="coord-lng">--</b>&nbsp;&nbsp;ZOOM <b id="coord-zoom">--</b></div>
+    <button class="mode-btn mobile-only" id="btn-inspector-toggle" title="Inspector panel">&#9635;</button>
+  </div>
+
+  <div id="drawer-backdrop"></div>
+  <div id="main">
+    <div id="leftrail">
+      <div class="rail-section">
+        <div class="rail-title">Layers</div>
+        <label class="layer-row"><input type="checkbox" data-layer="radio" checked><span class="layer-swatch" style="background:#4a9edd;"></span>Comms coverage</label>
+        <label class="layer-row"><input type="checkbox" data-layer="radar" checked><span class="layer-swatch" style="background:#5fd08a;"></span>Radar coverage</label>
+        <label class="layer-row"><input type="checkbox" data-layer="jammer" checked><span class="layer-swatch" style="background:#b285e0;"></span>EW / jamming</label>
+        <label class="layer-row"><input type="checkbox" data-layer="gbad" checked><span class="layer-swatch" style="background:#e0524a;"></span>GBAD engagement</label>
+        <label class="layer-row"><input type="checkbox" data-layer="los" checked><span class="layer-swatch" style="background:#e0a838;"></span>LOS / terrain</label>
+        <label class="layer-row"><input type="checkbox" data-layer="labels" checked><span class="layer-swatch" style="background:#7d8f8a;"></span>Node labels</label>
+      </div>
+
+      <div class="rail-section" style="flex:1;">
+        <div class="rail-title">Asset library</div>
+        <div class="asset-cat">Radios</div>
+        <div id="lib-radio"></div>
+        <div class="asset-cat">Radar</div>
+        <div id="lib-radar"></div>
+        <div class="asset-cat">Ground-based air defence</div>
+        <div id="lib-gbad"></div>
+        <div class="asset-cat">Electronic warfare</div>
+        <div id="lib-jammer"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Terrain data</div>
+        <div class="readout" style="border-bottom:none;padding:2px 0 8px;"><span>Source</span><b id="terrain-source-readout">Simulated</b></div>
+        <div class="field">
+          <label>Mapbox access token</label>
+          <input type="text" id="mapbox-token-input" placeholder="pk.eyJ1Ijoi\u2026" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn primary" id="btn-mapbox-apply">Use Mapbox terrain</button>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:8px;">
+          No token entered? Falls back to the free Open Topo Data API automatically, then to simulated terrain if there's no network. Token is only kept for this session &mdash; paste it into the <code>MAPBOX_TOKEN</code> constant near the top of the file's script to make it permanent.
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Project</div>
+        <div class="btn-row">
+          <button class="btn" id="btn-save">Save .json</button>
+          <button class="btn" id="btn-load">Load .json</button>
+        </div>
+        <input type="file" id="file-load" accept=".json" style="display:none;">
+        <button class="btn" id="btn-png">Export PNG</button>
+        <button class="btn" id="btn-pdf">Export PDF report</button>
+      </div>
+    </div>
+
+    <div id="mapwrap">
+      <div id="map"></div>
+      <div id="crosshair-hint">CLICK MAP TO PLACE ASSET</div>
+    </div>
+
+    <div id="rightpanel">
+      <div class="rp-tabs">
+        <div class="rp-tab active" data-tab="inspector">Inspector</div>
+        <div class="rp-tab" data-tab="nodes">Nodes</div>
+        <div class="rp-tab" data-tab="los">LOS</div>
+      </div>
+      <div id="rp-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   COOPERAGE DEMO
+   All propagation / detection-range figures below are simplified planning
+   approximations for demonstration purposes (free-space path loss models
+   and openly published, approximate system ranges). They are not derived
+   from classified or restricted technical data and should not be used for
+   real operational planning.
+   ========================================================================= */
+
+/* ---------------- Colours per system type ---------------- */
+const TYPE_COLOR = {
+  radio:  '#4a9edd',
+  radar:  '#5fd08a',
+  jammer: '#b285e0',
+  gbad:   '#e0524a'
+};
+const TYPE_LABEL = { radio:'RADIO', radar:'RADAR', jammer:'JAMMER', gbad:'GBAD' };
+
+/* ---------------- Asset library (approximate / public-order-of-magnitude figures) ---------------- */
+const ASSET_LIBRARY = {
+  radio: [
+    { name:'Thales SYNAPS-V (VHF manpack)', params:{ freqMHz:60, powerW:10, antGainDbi:2, heightAglM:2, cableLossDb:1, rxSensitivityDbm:-110, fadeMarginDb:10 } },
+    { name:'Thales SYNAPS-H (HF)',           params:{ freqMHz:12, powerW:20, antGainDbi:1, heightAglM:3, cableLossDb:1.5, rxSensitivityDbm:-112, fadeMarginDb:12 } },
+    { name:'Harris RF-5800 (VHF/UHF)',       params:{ freqMHz:225, powerW:5, antGainDbi:3, heightAglM:2, cableLossDb:1, rxSensitivityDbm:-108, fadeMarginDb:10 } },
+    { name:'Generic UHF repeater',           params:{ freqMHz:400, powerW:25, antGainDbi:6, heightAglM:15, cableLossDb:2, rxSensitivityDbm:-105, fadeMarginDb:8 } }
+  ],
+  radar: [
+    { name:'Giraffe (ground surveillance)', params:{ rangeKm:60,  sweepDeg:360, heading:0, heightAglM:4,  targetHeightM:2 } },
+    { name:'GM200 (air surveillance)',      params:{ rangeKm:120, sweepDeg:360, heading:0, heightAglM:6,  targetHeightM:100 } },
+    { name:'GM400 (long range air)',        params:{ rangeKm:200, sweepDeg:360, heading:0, heightAglM:8,  targetHeightM:200 } },
+    { name:'Ground surveillance sector radar', params:{ rangeKm:20, sweepDeg:90, heading:0, heightAglM:3, targetHeightM:2 } }
+  ],
+  gbad: [
+    { name:'Mistral (VSHORAD)',   params:{ engagementKm:6,  warningKm:9,  noFlyKm:12, heightAglM:2 } },
+    { name:'RBS-70',              params:{ engagementKm:8,  warningKm:11, noFlyKm:14, heightAglM:2 } },
+    { name:'Starstreak',         params:{ engagementKm:7,  warningKm:10, noFlyKm:13, heightAglM:2 } },
+    { name:'Stinger (MANPADS)',   params:{ engagementKm:4.8,warningKm:7,  noFlyKm:9,  heightAglM:1.7 } },
+    { name:'NASAMS (medium range)', params:{ engagementKm:25,warningKm:30, noFlyKm:35, heightAglM:3 } }
+  ],
+  jammer: [
+    { name:'Nerod RF jammer (C-UAS)', params:{ freqRangeMHz:'400\u20136000', powerW:40, sweepDeg:90, heading:0, mode:'directional', heightAglM:4, targetHeightM:80 } },
+    { name:'Omni EW jammer (VHF/UHF)', params:{ freqRangeMHz:'30\u2013512',  powerW:80, sweepDeg:360, heading:0, mode:'omni', heightAglM:5, targetHeightM:30 } },
+    { name:'GNSS jammer (directional)', params:{ freqRangeMHz:'1100\u20131600', powerW:15, sweepDeg:45, heading:0, mode:'directional', heightAglM:3, targetHeightM:150 } }
+  ]
+};
+
+/* ---------------- App state ---------------- */
+let nodes = [];
+let nodeSeq = 1;
+let mode = 'select';
+let selectedNodeId = null;
+let losPoints = [];   // up to 2 {lat,lng}
+let losResult = null;
+let losLoading = false;
+let losParams = { freqGHz:0.4, heightA:10, heightB:2 };
+const layerVisible = { radio:true, radar:true, jammer:true, gbad:true, los:true, labels:true };
+
+/* ---------------- Map init ---------------- */
+const map = L.map('map', { zoomControl:true, attributionControl:true, worldCopyJump:true })
+  .setView([53.3498, -7.8], 7); // Ireland-ish default view
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; OpenStreetMap contributors &copy; CARTO',
+  maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+
+const markerLayer = L.layerGroup().addTo(map);
+const losLayer = L.layerGroup().addTo(map);
+
+/* ---------------- Overlay canvas for coverage shapes ---------------- */
+const overlayCanvas = document.createElement('canvas');
+overlayCanvas.id = 'overlay-canvas';
+map.getContainer().appendChild(overlayCanvas);
+const octx = overlayCanvas.getContext('2d');
+let redrawScheduled = false;
+
+function resizeOverlay(){
+  const size = map.getSize();
+  overlayCanvas.width = size.x;
+  overlayCanvas.height = size.y;
+  overlayCanvas.style.width = size.x + 'px';
+  overlayCanvas.style.height = size.y + 'px';
+}
+function scheduleRedraw(){
+  if (redrawScheduled) return;
+  redrawScheduled = true;
+  requestAnimationFrame(function(){ redrawScheduled = false; redraw(); });
+}
+map.on('move zoom viewreset resize', scheduleRedraw);
+window.addEventListener('resize', function(){ resizeOverlay(); scheduleRedraw(); });
+
+/* ---------------- Geo helpers ---------------- */
+const R_EARTH_KM = 6371;
+function toRad(d){ return d*Math.PI/180; }
+function toDeg(r){ return r*180/Math.PI; }
+
+function destinationPoint(lat, lng, bearingDeg, distanceKm){
+  const br = toRad(bearingDeg);
+  const lat1 = toRad(lat), lng1 = toRad(lng);
+  const dOverR = distanceKm / R_EARTH_KM;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(dOverR) + Math.cos(lat1)*Math.sin(dOverR)*Math.cos(br));
+  const lng2 = lng1 + Math.atan2(Math.sin(br)*Math.sin(dOverR)*Math.cos(lat1), Math.cos(dOverR)-Math.sin(lat1)*Math.sin(lat2));
+  return [toDeg(lat2), toDeg(lng2)];
+}
+function haversineKm(lat1,lng1,lat2,lng2){
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return 2*R_EARTH_KM*Math.asin(Math.sqrt(a));
+}
+function bearingDeg(lat1,lng1,lat2,lng2){
+  const y = Math.sin(toRad(lng2-lng1))*Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1))*Math.sin(toRad(lat2)) - Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lng2-lng1));
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function ll2px(lat,lng){
+  const p = map.latLngToContainerPoint(L.latLng(lat,lng));
+  return [p.x, p.y];
+}
+
+/* =========================================================================
+   TERRAIN / ELEVATION ENGINE
+   Priority: Mapbox Terrain-RGB (if a token is set) -> Open Topo Data free API
+   -> deterministic mock model (used only if both are unavailable, e.g. no
+   network). Results are cached so repeated lookups near the same spot are
+   instant after the first fetch.
+   ========================================================================= */
+let MAPBOX_TOKEN = ''; // <-- paste your Mapbox access token here to enable real elevation data permanently
+let terrainSource = 'mock'; // 'mapbox' | 'opentopo' | 'mock' -- reflects what actually answered the last request
+const elevCache = new Map();   // "lat5,lng5" -> elevation metres
+const tileCache = new Map();   // "z/x/y" -> Promise<ImageData|null>
+
+function mockElevation(lat, lng){
+  const a = Math.sin(lat*41.0)*Math.cos(lng*37.5);
+  const b = Math.sin(lat*97.3 + lng*61.7);
+  const c = Math.sin((lat+lng)*233.1)*0.5;
+  return Math.max(0, 60 + 220*a + 90*b + 40*c);
+}
+
+function lngLatToTileFrac(lng, lat, zoom){
+  const n = Math.pow(2, zoom);
+  const xExact = (lng+180)/360*n;
+  const latRad = lat*Math.PI/180;
+  const yExact = (1 - Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2*n;
+  return { xExact, yExact };
+}
+
+async function getMapboxTile(z,x,y){
+  const key = z+'/'+x+'/'+y;
+  if (tileCache.has(key)) return tileCache.get(key);
+  const p = (async function(){
+    try{
+      const url = 'https://api.mapbox.com/v4/mapbox.terrain-rgb/'+z+'/'+x+'/'+y+'.pngraw?access_token='+encodeURIComponent(MAPBOX_TOKEN);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('tile http '+res.status);
+      const blob = await res.blob();
+      const bitmap = await createImageBitmap(blob);
+      const c = document.createElement('canvas'); c.width=256; c.height=256;
+      const cctx = c.getContext('2d');
+      cctx.drawImage(bitmap,0,0);
+      return cctx.getImageData(0,0,256,256);
+    }catch(err){ return null; }
+  })();
+  tileCache.set(key,p);
+  return p;
+}
+
+async function elevationFromMapbox(lat,lng){
+  const zoom = 12;
+  const { xExact, yExact } = lngLatToTileFrac(lng,lat,zoom);
+  const x = Math.floor(xExact), y = Math.floor(yExact);
+  const img = await getMapboxTile(zoom,x,y);
+  if (!img) return null;
+  const px = Math.min(255, Math.max(0, Math.floor((xExact-x)*256)));
+  const py = Math.min(255, Math.max(0, Math.floor((yExact-y)*256)));
+  const idx = (py*256+px)*4;
+  const R = img.data[idx], G = img.data[idx+1], B = img.data[idx+2];
+  return -10000 + (R*65536 + G*256 + B) * 0.1;
+}
+
+async function elevationsFromOpenTopo(points){
+  const results = new Array(points.length).fill(null);
+  const chunk = 100;
+  for (let i=0;i<points.length;i+=chunk){
+    const part = points.slice(i,i+chunk);
+    const locs = part.map(function(p){ return p.lat.toFixed(5)+','+p.lng.toFixed(5); }).join('|');
+    try{
+      const res = await fetch('https://api.opentopodata.org/v1/eudem25m?locations='+locs);
+      const data = await res.json();
+      if (data && data.results){
+        data.results.forEach(function(r,j){ results[i+j] = (typeof r.elevation==='number') ? r.elevation : null; });
+      }
+    }catch(err){ /* leave nulls, handled by caller fallback */ }
+  }
+  return results;
+}
+
+/* Batched elevation lookup used by both LOS profiling and coverage-ring calculation.
+   Returns an array of elevations (metres) aligned to the input points array. */
+async function batchElevations(points){
+  const result = new Array(points.length);
+  const need = [];
+  points.forEach(function(p,i){
+    const key = p.lat.toFixed(5)+','+p.lng.toFixed(5);
+    if (elevCache.has(key)) result[i] = elevCache.get(key);
+    else need.push(i);
+  });
+  if (need.length===0) return result;
+
+  if (MAPBOX_TOKEN){
+    terrainSource = 'mapbox';
+    await Promise.all(need.map(async function(i){
+      const p = points[i];
+      let v = await elevationFromMapbox(p.lat,p.lng);
+      if (v==null){ const fb = await elevationsFromOpenTopo([p]); v = fb[0]; }
+      if (v==null || isNaN(v)) v = mockElevation(p.lat,p.lng);
+      result[i] = v;
+      elevCache.set(p.lat.toFixed(5)+','+p.lng.toFixed(5), v);
+    }));
+  } else {
+    const fetched = await elevationsFromOpenTopo(need.map(function(i){ return points[i]; }));
+    let anyReal = false;
+    need.forEach(function(i,j){
+      let v = fetched[j];
+      if (v!=null && !isNaN(v)) anyReal = true;
+      if (v==null || isNaN(v)) v = mockElevation(points[i].lat, points[i].lng);
+      result[i] = v;
+      elevCache.set(points[i].lat.toFixed(5)+','+points[i].lng.toFixed(5), v);
+    });
+    terrainSource = anyReal ? 'opentopo' : 'mock';
+  }
+  return result;
+}
+async function getElevation(lat,lng){ const r = await batchElevations([{lat,lng}]); return r[0]; }
+
+function invalidateTerrainCaches(){ elevCache.clear(); tileCache.clear(); }
+
+/* ---------------- Path loss / range / horizon model ---------------- */
+function radioHorizonKm(heightA, heightB){
+  // standard 4/3-earth-radius radio horizon approximation
+  return 4.12*(Math.sqrt(Math.max(0,heightA)) + Math.sqrt(Math.max(0,heightB)));
+}
+function maxRangeKm(p){
+  // Free-space path loss based link budget (simplified, no atmospheric/terrain loss term)
+  const eirp = 10*Math.log10(p.powerW*1000) + p.antGainDbi - p.cableLossDb; // dBm
+  const threshold = p.rxSensitivityDbm + p.fadeMarginDb;
+  const freqMHz = p.freqMHz;
+  // FSPL(dB) = 32.44 + 20log10(d_km) + 20log10(f_MHz)  =>  solve for d_km
+  const exponent = (eirp - threshold - 32.44 - 20*Math.log10(freqMHz)) / 20;
+  const d = Math.pow(10, exponent);
+  const fsplRange = Math.max(0.5, Math.min(d, 400)); // clamp to sane demo bounds
+  const horizon = radioHorizonKm(p.heightAglM!=null?p.heightAglM:2, 2);
+  return Math.min(fsplRange, horizon);
+}
+function rangeKmFromJammer(node){
+  const base = Math.max(1, Math.sqrt(node.powerW) * 2.1); // simplified: grows with sqrt(power), demo purposes only
+  const horizon = radioHorizonKm(node.heightAglM!=null?node.heightAglM:4, node.targetHeightM!=null?node.targetHeightM:50);
+  return Math.min(base, horizon);
+}
+function radarEffectiveRangeKm(node){
+  const horizon = radioHorizonKm(node.heightAglM!=null?node.heightAglM:6, node.targetHeightM!=null?node.targetHeightM:50);
+  return Math.min(node.rangeKm, horizon);
+}
+
+/* terrain-aware coverage ring: samples real elevation along each bearing and
+   returns the furthest distance the mast-height-adjusted line-of-sight stays
+   clear of the ground, capped at the horizon/link-budget range. Cached per
+   node (node._ring) and only recomputed when relevant params change. */
+const RING_BEARINGS = 24, RING_STEPS = 4;
+async function computeCoverageRing(node, maxRangeKm_){
+  const heightAgl = node.heightAglM!=null ? node.heightAglM : 2;
+  const targetHeight = node.targetHeightM!=null ? node.targetHeightM : 2;
+  const samplePts = [{lat:node.lat,lng:node.lng}];
+  const meta = [];
+  for (let b=0;b<RING_BEARINGS;b++){
+    const brg = (360/RING_BEARINGS)*b;
+    for (let s=1;s<=RING_STEPS;s++){
+      const frac = s/RING_STEPS;
+      const dest = destinationPoint(node.lat,node.lng,brg, maxRangeKm_*frac);
+      samplePts.push({lat:dest[0], lng:dest[1]});
+      meta.push({b,frac});
+    }
+  }
+  const elevs = await batchElevations(samplePts);
+  const groundAtNode = elevs[0];
+  const txHeight = groundAtNode + heightAgl;
+  const ringByBearing = [];
+  for (let b=0;b<RING_BEARINGS;b++){
+    let clearFrac = 0.15; // always show a small minimum footprint
+    for (let s=0;s<RING_STEPS;s++){
+      const idx = 1 + b*RING_STEPS + s;
+      const ground = elevs[idx];
+      const frac = meta[b*RING_STEPS+s].frac;
+      const losH = txHeight + (targetHeight - txHeight) * frac;
+      if (ground <= losH - 3){ clearFrac = frac; }
+      else break;
+    }
+    const brg = (360/RING_BEARINGS)*b;
+    ringByBearing.push({ bearing:brg, rangeKm: maxRangeKm_*clearFrac });
+  }
+  return ringByBearing;
+}
+
+/* Interpolate the cached per-bearing ring at an arbitrary bearing (degrees) */
+function ringRangeAt(ring, brgDeg){
+  if (!ring || ring.length===0) return 0;
+  const n = ring.length;
+  const step = 360/n;
+  const idx = ((brgDeg%360)+360)%360 / step;
+  const i0 = Math.floor(idx) % n;
+  const i1 = (i0+1) % n;
+  const t = idx - Math.floor(idx);
+  return ring[i0].rangeKm*(1-t) + ring[i1].rangeKm*t;
+}
+
+/* Kick off (or reuse) an async coverage computation for a node; redraws once ready. */
+function scheduleCoverageCompute(node){
+  const maxR = node.type==='radio' ? maxRangeKm(node)
+             : node.type==='radar' ? radarEffectiveRangeKm(node)
+             : node.type==='jammer' ? rangeKmFromJammer(node)
+             : 0;
+  node._fallbackRangeKm = maxR;
+  const gen = (node._ringGen = (node._ringGen||0) + 1);
+  computeCoverageRing(node, maxR).then(function(ring){
+    if (node._ringGen !== gen) return; // a newer request superseded this one
+    node._ring = ring;
+    scheduleRedraw();
+  });
+}
+function invalidateCoverage(node){ node._ring = null; scheduleCoverageCompute(node); }
+
+/* ---------------- Node factory ---------------- */
+function makeNode(type, lat, lng, presetName, presetParams){
+  const id = 'n'+(nodeSeq++);
+  const base = { id, type, lat, lng, name: presetName || (TYPE_LABEL[type]+' '+id) };
+  let params;
+  if (type==='radio') params = Object.assign({ freqMHz:150, powerW:10, antGainDbi:2, heightAglM:2, cableLossDb:1, rxSensitivityDbm:-110, fadeMarginDb:10 }, presetParams);
+  else if (type==='radar') params = Object.assign({ rangeKm:80, sweepDeg:360, heading:0, heightAglM:6, targetHeightM:50 }, presetParams);
+  else if (type==='jammer') params = Object.assign({ freqRangeMHz:'30\u2013512', powerW:40, sweepDeg:90, heading:0, mode:'directional', heightAglM:4, targetHeightM:50 }, presetParams);
+  else if (type==='gbad') params = Object.assign({ engagementKm:6, warningKm:9, noFlyKm:12, heightAglM:2 }, presetParams);
+  const node = Object.assign(base, params);
+  if (type!=='gbad') scheduleCoverageCompute(node);
+  return node;
+}
+
+/* ---------------- Markers ---------------- */
+function iconFor(node){
+  const color = TYPE_COLOR[node.type];
+  const glyph = { radio:'R', radar:'\u25CE', jammer:'J', gbad:'\u2620' }[node.type] || '?';
+  return L.divIcon({
+    className:'', html:'<div class="node-marker" style="width:26px;height:26px;background:'+color+'22;color:'+color+';">'+glyph+'</div>',
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+}
+const markerRefs = {};
+function rebuildMarkers(){
+  markerLayer.clearLayers();
+  for (const k in markerRefs) delete markerRefs[k];
+  nodes.forEach(function(node){
+    const m = L.marker([node.lat,node.lng], { icon:iconFor(node), draggable:true });
+    m.on('click', function(){ selectNode(node.id); });
+    m.on('drag', function(e){ node.lat = e.target.getLatLng().lat; node.lng = e.target.getLatLng().lng; scheduleRedraw(); });
+    m.on('dragend', function(){ if (node.type!=='gbad') invalidateCoverage(node); renderInspector(); renderNodeList(); });
+    if (layerVisible.labels){
+      m.bindTooltip(node.name, { permanent:true, direction:'right', offset:[14,0], className:'', opacity:0.9 });
+    }
+    m.addTo(markerLayer);
+    markerRefs[node.id] = m;
+  });
+}
+
+/* ---------------- Canvas redraw of all coverage shapes ---------------- */
+/* Build an array of [lat,lng] points across a bearing span, using the cached
+   terrain ring if available, otherwise falling back to a plain circle/arc at
+   the node's link-budget/horizon range so something sensible shows immediately. */
+function sectorPathPoints(node, ring, fallbackRangeKm, heading, sweepDeg){
+  const half = sweepDeg/2;
+  const steps = Math.max(8, Math.round(sweepDeg/6));
+  const pts = [];
+  for (let i=0;i<=steps;i++){
+    const brg = heading - half + (sweepDeg*i/steps);
+    const r = ring ? ringRangeAt(ring, brg) : fallbackRangeKm;
+    pts.push(destinationPoint(node.lat,node.lng,brg,r));
+  }
+  return pts;
+}
+function drawShape(node, points, strokeColor, fillColor, closeToCenter){
+  const center = ll2px(node.lat,node.lng);
+  octx.beginPath();
+  if (closeToCenter) octx.moveTo(center[0],center[1]);
+  points.forEach(function(p,i){
+    const px = ll2px(p[0],p[1]);
+    if (i===0 && !closeToCenter) octx.moveTo(px[0],px[1]);
+    else octx.lineTo(px[0],px[1]);
+  });
+  if (closeToCenter) octx.lineTo(center[0],center[1]);
+  octx.closePath();
+  octx.fillStyle = fillColor;
+  octx.fill();
+  octx.strokeStyle = strokeColor;
+  octx.lineWidth = 1.3;
+  octx.stroke();
+}
+
+function drawRadioHeat(node){
+  const fallback = node._fallbackRangeKm != null ? node._fallbackRangeKm : maxRangeKm(node);
+  const pts = sectorPathPoints(node, node._ring, fallback, 0, 360);
+  const center = ll2px(node.lat,node.lng);
+  const outerPx = pts.map(function(p){ return ll2px(p[0],p[1]); });
+  let maxR = 0;
+  outerPx.forEach(function(p){ maxR = Math.max(maxR, Math.hypot(p[0]-center[0], p[1]-center[1])); });
+  const grad = octx.createRadialGradient(center[0],center[1],0, center[0],center[1], Math.max(maxR,1));
+  grad.addColorStop(0,   'rgba(74,158,221,0.55)');
+  grad.addColorStop(0.55,'rgba(74,158,221,0.28)');
+  grad.addColorStop(0.85,'rgba(224,168,56,0.16)');
+  grad.addColorStop(1,   'rgba(224,82,74,0.0)');
+  octx.beginPath();
+  outerPx.forEach(function(p,i){ if(i===0) octx.moveTo(p[0],p[1]); else octx.lineTo(p[0],p[1]); });
+  octx.closePath();
+  octx.fillStyle = grad;
+  octx.fill();
+  octx.strokeStyle = 'rgba(74,158,221,0.8)';
+  octx.lineWidth = 1;
+  octx.stroke();
+}
+
+function drawRadarNode(node){
+  const c = TYPE_COLOR.radar;
+  const fallback = node._fallbackRangeKm != null ? node._fallbackRangeKm : radarEffectiveRangeKm(node);
+  if (node.sweepDeg >= 359.9){
+    const pts = sectorPathPoints(node, node._ring, fallback, 0, 360);
+    drawShape(node, pts, c+'aa', c+'22', false);
+  } else {
+    const pts = sectorPathPoints(node, node._ring, fallback, node.heading, node.sweepDeg);
+    drawShape(node, pts, c+'cc', c+'33', true);
+  }
+}
+function drawJammerNode(node){
+  const c = TYPE_COLOR.jammer;
+  const sweep = node.mode==='omni' ? 360 : node.sweepDeg;
+  const fallback = node._fallbackRangeKm != null ? node._fallbackRangeKm : rangeKmFromJammer(node);
+  const pts = sectorPathPoints(node, node._ring, fallback, node.heading, sweep);
+  drawShape(node, pts, c+'cc', c+'2e', sweep < 359.9);
+}
+function drawGbadNode(node){
+  const rings = [
+    { r:node.noFlyKm, color:'rgba(224,82,74,0.10)', stroke:'rgba(224,82,74,0.55)' },
+    { r:node.warningKm, color:'rgba(224,82,74,0.16)', stroke:'rgba(224,82,74,0.7)' },
+    { r:node.engagementKm, color:'rgba(224,82,74,0.30)', stroke:'rgba(224,82,74,1)' }
+  ];
+  rings.forEach(function(ring){
+    const pts = [];
+    for (let i=0;i<=64;i++){ pts.push(destinationPoint(node.lat,node.lng, i*(360/64), ring.r)); }
+    const px = pts.map(function(p){ return ll2px(p[0],p[1]); });
+    octx.beginPath();
+    px.forEach(function(p,i){ if(i===0) octx.moveTo(p[0],p[1]); else octx.lineTo(p[0],p[1]); });
+    octx.closePath();
+    octx.fillStyle = ring.color;
+    octx.fill();
+    octx.setLineDash([5,4]);
+    octx.strokeStyle = ring.stroke;
+    octx.lineWidth = 1.2;
+    octx.stroke();
+    octx.setLineDash([]);
+  });
+}
+
+function redraw(){
+  octx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+  nodes.forEach(function(node){
+    if (!layerVisible[node.type]) return;
+    if (node.type==='radio') drawRadioHeat(node);
+    else if (node.type==='radar') drawRadarNode(node);
+    else if (node.type==='jammer') drawJammerNode(node);
+    else if (node.type==='gbad') drawGbadNode(node);
+  });
+  // highlight selection ring
+  if (selectedNodeId){
+    const n = nodes.find(function(x){ return x.id===selectedNodeId; });
+    if (n){
+      const p = ll2px(n.lat,n.lng);
+      octx.beginPath();
+      octx.arc(p[0],p[1],17,0,Math.PI*2);
+      octx.strokeStyle = '#ffffff';
+      octx.lineWidth = 1.4;
+      octx.setLineDash([3,3]);
+      octx.stroke();
+      octx.setLineDash([]);
+    }
+  }
+  // LOS preview line + endpoint markers
+  if (losPoints.length>0 && layerVisible.los){
+    octx.save();
+    octx.strokeStyle = '#e0a838';
+    octx.lineWidth = 2.5;
+    octx.setLineDash([7,5]);
+    octx.beginPath();
+    losPoints.forEach(function(p,i){
+      const px = ll2px(p.lat,p.lng);
+      if(i===0) octx.moveTo(px[0],px[1]); else octx.lineTo(px[0],px[1]);
+    });
+    octx.stroke();
+    octx.setLineDash([]);
+    losPoints.forEach(function(p,i){
+      const px = ll2px(p.lat,p.lng);
+      octx.beginPath();
+      octx.arc(px[0],px[1],6,0,Math.PI*2);
+      octx.fillStyle = '#0d1212';
+      octx.fill();
+      octx.lineWidth = 2;
+      octx.strokeStyle = '#e0a838';
+      octx.stroke();
+      octx.fillStyle = '#e0a838';
+      octx.font = 'bold 11px monospace';
+      octx.textAlign = 'center';
+      octx.fillText(i===0?'A':'B', px[0], px[1]+4);
+    });
+    octx.restore();
+  }
+}
+
+/* ---------------- LOS + Fresnel ---------------- */
+async function computeLOS(a,b, freqGHz, heightA, heightB){
+  freqGHz = freqGHz || 0.4;
+  heightA = heightA==null? 10 : heightA;
+  heightB = heightB==null? 2  : heightB;
+  const dTotal = haversineKm(a.lat,a.lng,b.lat,b.lng);
+  const N = 60;
+  const pathPts = [];
+  for (let i=0;i<=N;i++){
+    const t = i/N;
+    pathPts.push({ lat: a.lat + (b.lat-a.lat)*t, lng: a.lng + (b.lng-a.lng)*t, t });
+  }
+  const grounds = await batchElevations(pathPts.map(function(p){ return {lat:p.lat,lng:p.lng}; }));
+  const elevA = grounds[0] + heightA;
+  const elevB = grounds[N] + heightB;
+  const samples = [];
+  let blocked = false;
+  let worstClearance = Infinity;
+  let obstructionDist = null;
+  for (let i=0;i<=N;i++){
+    const t = pathPts[i].t;
+    const ground = grounds[i];
+    const losH = elevA + (elevB-elevA)*t;
+    const d1 = dTotal*t, d2 = dTotal*(1-t);
+    const fresnelR = (d1===0||d2===0) ? 0 : 17.3*Math.sqrt((d1*d2)/(freqGHz*dTotal)); // metres, 1st Fresnel zone
+    const clearance = losH - ground; // metres of clearance above ground at LOS height
+    const neededClearance = fresnelR*0.6; // 60% clearance rule
+    samples.push({ t, dist:d1, ground, losH, fresnelR, clearance, neededClearance });
+    if (clearance < neededClearance){
+      if (!blocked || clearance < worstClearance){
+        obstructionDist = d1;
+      }
+      blocked = true;
+      worstClearance = Math.min(worstClearance, clearance);
+    }
+  }
+  return { dTotal, samples, blocked, obstructionDist, freqGHz, heightA, heightB, a, b };
+}
+
+/* ---------------- Mobile drawers ---------------- */
+const leftrailEl = document.getElementById('leftrail');
+const rightpanelEl = document.getElementById('rightpanel');
+const backdropEl = document.getElementById('drawer-backdrop');
+function isMobile(){ return window.innerWidth <= 800; }
+function closeDrawers(){
+  leftrailEl.classList.remove('open');
+  rightpanelEl.classList.remove('open');
+  backdropEl.classList.remove('show');
+}
+function openDrawer(el){
+  const wasOpen = el.classList.contains('open');
+  closeDrawers();
+  if (!wasOpen){ el.classList.add('open'); backdropEl.classList.add('show'); }
+}
+document.getElementById('btn-layers-toggle').addEventListener('click', function(){ openDrawer(leftrailEl); });
+document.getElementById('btn-inspector-toggle').addEventListener('click', function(){ openDrawer(rightpanelEl); });
+backdropEl.addEventListener('click', closeDrawers);
+function openInspectorOnMobile(){ if (isMobile()){ closeDrawers(); rightpanelEl.classList.add('open'); backdropEl.classList.add('show'); } }
+
+/* ---------------- UI: mode switching ---------------- */
+document.querySelectorAll('.mode-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    mode = btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(function(b){ b.classList.toggle('active', b===btn); });
+    document.getElementById('crosshair-hint').style.display = (mode==='select') ? 'none' : 'block';
+    closeDrawers();
+    if (mode==='los'){
+      losPoints = []; losResult = null;
+      document.getElementById('crosshair-hint').textContent = 'CLICK TWO POINTS TO ANALYSE LINE OF SIGHT';
+      setActiveTab('los');
+    } else if (mode!=='select'){
+      document.getElementById('crosshair-hint').textContent = 'CLICK MAP TO PLACE ' + mode.toUpperCase();
+    }
+    scheduleRedraw();
+  });
+});
+
+function nearestNodeWithin(lat,lng,km){
+  let best = null, bestD = km;
+  nodes.forEach(function(n){
+    const d = haversineKm(lat,lng,n.lat,n.lng);
+    if (d <= bestD){ bestD = d; best = n; }
+  });
+  return best;
+}
+function runLOS(){
+  const nodeA = nearestNodeWithin(losPoints[0].lat, losPoints[0].lng, 0.08);
+  const nodeB = nearestNodeWithin(losPoints[1].lat, losPoints[1].lng, 0.08);
+  if (nodeA) losParams.heightA = nodeA.heightAglM!=null ? nodeA.heightAglM : 10;
+  if (nodeB) losParams.heightB = nodeB.heightAglM!=null ? nodeB.heightAglM : 2;
+  losLoading = true;
+  renderLOSTab();
+  computeLOS(losPoints[0], losPoints[1], losParams.freqGHz, losParams.heightA, losParams.heightB).then(function(result){
+    losResult = result;
+    losLoading = false;
+    renderLOSTab();
+    scheduleRedraw();
+  });
+}
+
+map.on('click', function(e){
+  const lat = e.latlng.lat, lng = e.latlng.lng;
+  if (mode==='los'){
+    losPoints.push({lat,lng});
+    if (losPoints.length===2){
+      runLOS();
+    }
+    scheduleRedraw();
+    return;
+  }
+  if (mode==='select') return;
+  const node = makeNode(mode, lat, lng);
+  nodes.push(node);
+  rebuildMarkers();
+  selectNode(node.id);
+  toast(TYPE_LABEL[mode] + ' placed');
+  scheduleRedraw();
+});
+
+map.on('mousemove', function(e){
+  document.getElementById('coord-lat').textContent = e.latlng.lat.toFixed(4);
+  document.getElementById('coord-lng').textContent = e.latlng.lng.toFixed(4);
+});
+map.on('zoomend', function(){ document.getElementById('coord-zoom').textContent = map.getZoom(); });
+
+/* ---------------- Layer checkboxes ---------------- */
+document.querySelectorAll('[data-layer]').forEach(function(cb){
+  cb.addEventListener('change', function(){
+    layerVisible[cb.dataset.layer] = cb.checked;
+    if (cb.dataset.layer==='labels') rebuildMarkers();
+    scheduleRedraw();
+  });
+});
+
+/* ---------------- Right panel tabs ---------------- */
+function setActiveTab(tab){
+  document.querySelectorAll('.rp-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
+  if (tab==='inspector') renderInspector();
+  else if (tab==='nodes') renderNodeList();
+  else if (tab==='los') renderLOSTab();
+}
+document.querySelectorAll('.rp-tab').forEach(function(t){
+  t.addEventListener('click', function(){ setActiveTab(t.dataset.tab); });
+});
+
+function selectNode(id){
+  selectedNodeId = id;
+  setActiveTab('inspector');
+  openInspectorOnMobile();
+  scheduleRedraw();
+}
+
+/* ---------------- Inspector rendering ---------------- */
+function fieldNum(label, value, step, oninput){
+  const wrap = document.createElement('div'); wrap.className='field';
+  const l = document.createElement('label'); l.textContent = label; wrap.appendChild(l);
+  const inp = document.createElement('input'); inp.type='number'; inp.value=value; if(step) inp.step=step;
+  inp.addEventListener('input', function(){ oninput(parseFloat(inp.value)||0); });
+  wrap.appendChild(inp);
+  return wrap;
+}
+function fieldRange(label, value, min, max, step, oninput){
+  const wrap = document.createElement('div'); wrap.className='field';
+  const l = document.createElement('label'); l.innerHTML = label + '<span class="rangeval">'+value+'</span>'; wrap.appendChild(l);
+  const inp = document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.value=value;
+  inp.addEventListener('input', function(){
+    l.querySelector('.rangeval').textContent = inp.value;
+    oninput(parseFloat(inp.value));
+  });
+  wrap.appendChild(inp);
+  return wrap;
+}
+function fieldText(label, value, oninput){
+  const wrap = document.createElement('div'); wrap.className='field';
+  const l = document.createElement('label'); l.textContent = label; wrap.appendChild(l);
+  const inp = document.createElement('input'); inp.type='text'; inp.value=value;
+  inp.addEventListener('input', function(){ oninput(inp.value); });
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+function ensureGroundElevation(node){
+  if (node._groundElevM!=null || node._groundFetching) return;
+  node._groundFetching = true;
+  getElevation(node.lat,node.lng).then(function(e){
+    node._groundElevM = e;
+    node._groundFetching = false;
+    if (selectedNodeId===node.id) renderInspector();
+  });
+}
+
+function renderInspector(){
+  const body = document.getElementById('rp-body');
+  body.innerHTML = '';
+  const node = nodes.find(function(n){ return n.id===selectedNodeId; });
+  if (!node){
+    const es = document.createElement('div'); es.className='empty-state';
+    es.innerHTML = '<span class="ico">\u25C8</span>Select a node on the map, or choose a placement mode above and click the map to add a new radio, radar, jammer, or GBAD asset.';
+    body.appendChild(es);
+    return;
+  }
+  ensureGroundElevation(node);
+  const title = document.createElement('div');
+  title.className = 'section-label';
+  title.textContent = TYPE_LABEL[node.type] + ' \u2014 ' + node.id;
+  body.appendChild(title);
+  body.appendChild(fieldText('Name', node.name, function(v){ node.name=v; rebuildMarkers(); }));
+  body.appendChild(fieldNum('Latitude', node.lat.toFixed(5), 0.0001, function(v){ node.lat=v; node._groundElevM=null; rebuildMarkers(); if(node.type!=='gbad') invalidateCoverage(node); else scheduleRedraw(); renderInspector(); }));
+  body.appendChild(fieldNum('Longitude', node.lng.toFixed(5), 0.0001, function(v){ node.lng=v; node._groundElevM=null; rebuildMarkers(); if(node.type!=='gbad') invalidateCoverage(node); else scheduleRedraw(); renderInspector(); }));
+  body.appendChild(readout('Ground elevation', node._groundElevM!=null ? node._groundElevM.toFixed(0)+' m \u2014 '+terrainSourceLabel() : 'Fetching\u2026'));
+
+  if (node.type==='radio'){
+    body.appendChild(sectionLabel('Transmitter'));
+    body.appendChild(fieldNum('Frequency (MHz)', node.freqMHz, 1, function(v){ node.freqMHz=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('RF power (W)', node.powerW, 0.5, function(v){ node.powerW=v; invalidateCoverage(node); }));
+    body.appendChild(sectionLabel('Antenna'));
+    body.appendChild(fieldNum('Antenna gain (dBi)', node.antGainDbi, 0.5, function(v){ node.antGainDbi=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('Mast / antenna height (m AGL)', node.heightAglM, 0.5, function(v){ node.heightAglM=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('Cable loss (dB)', node.cableLossDb, 0.1, function(v){ node.cableLossDb=v; invalidateCoverage(node); }));
+    body.appendChild(sectionLabel('Receiver'));
+    body.appendChild(fieldNum('Rx sensitivity (dBm)', node.rxSensitivityDbm, 1, function(v){ node.rxSensitivityDbm=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('Fade margin (dB)', node.fadeMarginDb, 1, function(v){ node.fadeMarginDb=v; invalidateCoverage(node); }));
+    body.appendChild(sectionLabel('Prediction'));
+    const range = maxRangeKm(node);
+    const horizon = radioHorizonKm(node.heightAglM, 2);
+    body.appendChild(readout('Predicted max range', range.toFixed(1)+' km', true));
+    body.appendChild(readout('Radio horizon (this mast height)', horizon.toFixed(1)+' km'));
+    body.appendChild(readout('EIRP', (10*Math.log10(node.powerW*1000)+node.antGainDbi-node.cableLossDb).toFixed(1)+' dBm'));
+  } else if (node.type==='radar'){
+    body.appendChild(sectionLabel('Detection'));
+    body.appendChild(fieldNum('Detection range (km)', node.rangeKm, 1, function(v){ node.rangeKm=v; invalidateCoverage(node); }));
+    body.appendChild(fieldRange('Sector width (deg)', node.sweepDeg, 10, 360, 5, function(v){ node.sweepDeg=v; scheduleRedraw(); }));
+    if (node.sweepDeg<360) body.appendChild(fieldRange('Heading (deg)', node.heading, 0, 359, 1, function(v){ node.heading=v; scheduleRedraw(); }));
+    body.appendChild(sectionLabel('Mast &amp; target assumptions'));
+    body.appendChild(fieldNum('Radar mast height (m AGL)', node.heightAglM, 0.5, function(v){ node.heightAglM=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('Assumed target altitude (m)', node.targetHeightM, 5, function(v){ node.targetHeightM=v; invalidateCoverage(node); }));
+    body.appendChild(readout('Mode', node.sweepDeg>=359.9 ? '360\u00B0 rotating' : 'Sector scan'));
+    body.appendChild(readout('Effective range (horizon-limited)', radarEffectiveRangeKm(node).toFixed(1)+' km', true));
+  } else if (node.type==='jammer'){
+    body.appendChild(sectionLabel('Emitter'));
+    body.appendChild(fieldText('Frequency range (MHz)', node.freqRangeMHz, function(v){ node.freqRangeMHz=v; }));
+    body.appendChild(fieldNum('Power output (W)', node.powerW, 1, function(v){ node.powerW=v; invalidateCoverage(node); }));
+    const modeWrap = document.createElement('div'); modeWrap.className='field';
+    const ml = document.createElement('label'); ml.textContent='Antenna pattern'; modeWrap.appendChild(ml);
+    const sel = document.createElement('select');
+    ['omni','directional'].forEach(function(m){ const o=document.createElement('option'); o.value=m; o.textContent=m; if(node.mode===m) o.selected=true; sel.appendChild(o); });
+    sel.addEventListener('change', function(){ node.mode=sel.value; renderInspector(); scheduleRedraw(); });
+    modeWrap.appendChild(sel);
+    body.appendChild(modeWrap);
+    if (node.mode==='directional'){
+      body.appendChild(fieldRange('Beam width (deg)', node.sweepDeg, 10, 180, 5, function(v){ node.sweepDeg=v; scheduleRedraw(); }));
+      body.appendChild(fieldRange('Heading (deg)', node.heading, 0, 359, 1, function(v){ node.heading=v; scheduleRedraw(); }));
+    }
+    body.appendChild(sectionLabel('Mast &amp; target assumptions'));
+    body.appendChild(fieldNum('Emitter mast height (m AGL)', node.heightAglM, 0.5, function(v){ node.heightAglM=v; invalidateCoverage(node); }));
+    body.appendChild(fieldNum('Assumed target altitude (m)', node.targetHeightM, 5, function(v){ node.targetHeightM=v; invalidateCoverage(node); }));
+    body.appendChild(readout('Effective radius (demo model, horizon-limited)', rangeKmFromJammer(node).toFixed(1)+' km', true));
+  } else if (node.type==='gbad'){
+    body.appendChild(sectionLabel('Engagement envelope'));
+    body.appendChild(fieldNum('Engagement radius (km)', node.engagementKm, 0.5, function(v){ node.engagementKm=v; scheduleRedraw(); }));
+    body.appendChild(fieldNum('Warning radius (km)', node.warningKm, 0.5, function(v){ node.warningKm=v; scheduleRedraw(); }));
+    body.appendChild(fieldNum('No-fly radius (km)', node.noFlyKm, 0.5, function(v){ node.noFlyKm=v; scheduleRedraw(); }));
+    body.appendChild(fieldNum('Launcher height (m AGL)', node.heightAglM, 0.5, function(v){ node.heightAglM=v; scheduleRedraw(); }));
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.5;';
+    note.textContent = 'GBAD rings are drawn as plain geometric envelopes (not terrain-masked) \u2014 engagement geometry depends on missile flight profile, not just antenna line-of-sight.';
+    body.appendChild(note);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'btn-row';
+  actions.style.marginTop = '18px';
+  const dupBtn = document.createElement('button'); dupBtn.className='btn'; dupBtn.textContent='Duplicate';
+  dupBtn.addEventListener('click', function(){
+    const copy = Object.assign({}, node);
+    copy.id = 'n'+(nodeSeq++);
+    copy.lat += 0.03; copy.lng += 0.03;
+    copy.name = node.name + ' (copy)';
+    copy._ring = null; copy._groundElevM = null; copy._groundFetching = false; copy._ringGen = 0;
+    nodes.push(copy); rebuildMarkers(); selectNode(copy.id);
+    if (copy.type!=='gbad') invalidateCoverage(copy);
+  });
+  const delBtn = document.createElement('button'); delBtn.className='btn danger'; delBtn.textContent='Delete';
+  delBtn.addEventListener('click', function(){
+    nodes = nodes.filter(function(n){ return n.id!==node.id; });
+    selectedNodeId = null;
+    rebuildMarkers(); renderInspector(); renderNodeList(); scheduleRedraw();
+  });
+  actions.appendChild(dupBtn); actions.appendChild(delBtn);
+  body.appendChild(actions);
+}
+function sectionLabel(txt){ const d=document.createElement('div'); d.className='section-label'; d.textContent=txt; return d; }
+function readout(label,val,ok){
+  const d = document.createElement('div'); d.className='readout'+(ok?' ok':'');
+  d.innerHTML = '<span>'+label+'</span><b>'+val+'</b>';
+  return d;
+}
+
+/* ---------------- Node list tab ---------------- */
+function renderNodeList(){
+  const body = document.getElementById('rp-body');
+  body.innerHTML = '';
+  const label = sectionLabel('Placed assets ('+nodes.length+')');
+  body.appendChild(label);
+  if (nodes.length===0){
+    const es = document.createElement('div'); es.className='empty-state';
+    es.innerHTML = '<span class="ico">\u2295</span>No assets on the map yet. Choose a placement mode from the top bar and click the map to begin.';
+    body.appendChild(es);
+    return;
+  }
+  nodes.forEach(function(node){
+    const row = document.createElement('div');
+    row.className = 'node-list-item' + (node.id===selectedNodeId ? ' sel':'');
+    row.innerHTML = '<span class="node-dot" style="background:'+TYPE_COLOR[node.type]+';"></span>'+
+      '<span class="nname">'+node.name+'</span><span class="ntype">'+TYPE_LABEL[node.type]+'</span>';
+    row.addEventListener('click', function(){ map.panTo([node.lat,node.lng]); selectNode(node.id); setActiveTab('inspector'); });
+    body.appendChild(row);
+  });
+}
+
+/* ---------------- LOS tab / terrain profile chart ---------------- */
+function renderLOSTab(){
+  const body = document.getElementById('rp-body');
+  body.innerHTML = '';
+  body.appendChild(sectionLabel('Line-of-sight analysis'));
+  if (losLoading){
+    const es = document.createElement('div'); es.className='empty-state';
+    es.innerHTML = '<span class="ico">\u27F3</span>Fetching terrain elevation for the path\u2026';
+    body.appendChild(es);
+    return;
+  }
+  if (!losResult){
+    const es = document.createElement('div'); es.className='empty-state';
+    es.innerHTML = '<span class="ico">\u2197</span>Click "LOS Tool" in the top bar, then click two points on the map to analyse the radio path between them. Clicking near a placed asset uses its mast height automatically.';
+    body.appendChild(es);
+    return;
+  }
+  const r = losResult;
+  const badge = document.createElement('span');
+  badge.className = 'badge ' + (r.blocked ? 'bad':'ok');
+  badge.textContent = r.blocked ? 'LOS Blocked' : 'LOS Available';
+  const badgeWrap = document.createElement('div'); badgeWrap.style.marginBottom='10px'; badgeWrap.appendChild(badge);
+  body.appendChild(badgeWrap);
+
+  body.appendChild(readout('Path distance', r.dTotal.toFixed(2)+' km'));
+  if (r.blocked) body.appendChild(readout('Obstruction at', r.obstructionDist.toFixed(2)+' km along path'));
+  body.appendChild(readout('Terrain source', terrainSourceLabel()));
+
+  const wrap = document.createElement('div'); wrap.id='profile-canvas-wrap'; wrap.style.marginTop='14px';
+  const canvas = document.createElement('canvas'); canvas.width=268; canvas.height=160;
+  wrap.appendChild(canvas);
+  body.appendChild(wrap);
+  drawProfile(canvas, r);
+
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;';
+  note.textContent = 'Green: terrain surface. Amber dashed: line-of-sight path. Amber band: first Fresnel zone (60% clearance threshold).';
+  body.appendChild(note);
+
+  body.appendChild(sectionLabel('Analysis parameters'));
+  body.appendChild(fieldNum('Point A height AGL (m)', losParams.heightA, 0.5, function(v){ losParams.heightA=v; }));
+  body.appendChild(fieldNum('Point B height AGL (m)', losParams.heightB, 0.5, function(v){ losParams.heightB=v; }));
+  body.appendChild(fieldNum('Frequency (MHz)', losParams.freqGHz*1000, 10, function(v){ losParams.freqGHz=v/1000; }));
+
+  const btnRow = document.createElement('div'); btnRow.className='btn-row'; btnRow.style.marginTop='6px';
+  const recalcBtn = document.createElement('button'); recalcBtn.className='btn primary'; recalcBtn.textContent='Recalculate';
+  recalcBtn.addEventListener('click', function(){
+    losLoading = true; renderLOSTab();
+    computeLOS(losPoints[0], losPoints[1], losParams.freqGHz, losParams.heightA, losParams.heightB).then(function(result){
+      losResult = result; losLoading = false; renderLOSTab(); scheduleRedraw();
+    });
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className='btn danger'; clearBtn.textContent='Clear';
+  clearBtn.addEventListener('click', function(){ losPoints=[]; losResult=null; renderLOSTab(); scheduleRedraw(); });
+  btnRow.appendChild(recalcBtn); btnRow.appendChild(clearBtn);
+  body.appendChild(btnRow);
+}
+function terrainSourceLabel(){
+  if (terrainSource==='mapbox') return 'Mapbox Terrain-RGB (real DEM)';
+  if (terrainSource==='opentopo') return 'Open Topo Data (real DEM)';
+  return 'Simulated (no network/token)';
+}
+
+function drawProfile(canvas, r){
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, pad=8;
+  ctx.clearRect(0,0,W,H);
+  const samples = r.samples;
+  let minE = Infinity, maxE = -Infinity;
+  samples.forEach(function(s){
+    minE = Math.min(minE, s.ground, s.losH - s.neededClearance);
+    maxE = Math.max(maxE, s.ground, s.losH + s.neededClearance);
+  });
+  const span = Math.max(maxE-minE, 1);
+  function xOf(t){ return pad + t*(W-2*pad); }
+  function yOf(e){ return H-pad - ((e-minE)/span)*(H-2*pad); }
+
+  // fresnel band
+  ctx.beginPath();
+  samples.forEach(function(s,i){ const x=xOf(s.t), y=yOf(s.losH+s.neededClearance); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  for (let i=samples.length-1;i>=0;i--){ const s=samples[i]; ctx.lineTo(xOf(s.t), yOf(s.losH-s.neededClearance)); }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(224,168,56,0.18)';
+  ctx.fill();
+
+  // terrain
+  ctx.beginPath();
+  samples.forEach(function(s,i){ const x=xOf(s.t), y=yOf(s.ground); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.lineTo(xOf(1), H-pad); ctx.lineTo(xOf(0), H-pad); ctx.closePath();
+  ctx.fillStyle = 'rgba(95,208,138,0.25)';
+  ctx.fill();
+  ctx.beginPath();
+  samples.forEach(function(s,i){ const x=xOf(s.t), y=yOf(s.ground); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.strokeStyle = '#5fd08a'; ctx.lineWidth=1.5; ctx.stroke();
+
+  // LOS line
+  ctx.beginPath();
+  samples.forEach(function(s,i){ const x=xOf(s.t), y=yOf(s.losH); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.strokeStyle = '#e0a838'; ctx.lineWidth=2; ctx.setLineDash([5,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // obstruction marker
+  if (r.blocked){
+    const s = samples.reduce(function(worst,cur){ return (cur.clearance-cur.neededClearance) < (worst.clearance-worst.neededClearance) ? cur : worst; });
+    const x = xOf(s.t), y = yOf(s.ground);
+    ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2); ctx.fillStyle='#e0524a'; ctx.fill();
+  }
+}
+
+/* ---------------- Asset library buttons ---------------- */
+function buildLibrary(){
+  Object.keys(ASSET_LIBRARY).forEach(function(type){
+    const container = document.getElementById('lib-'+type);
+    ASSET_LIBRARY[type].forEach(function(asset){
+      const b = document.createElement('button');
+      b.className='asset-btn';
+      const detail = type==='radio' ? asset.params.freqMHz+' MHz \u00B7 '+asset.params.powerW+' W'
+        : type==='radar' ? asset.params.rangeKm+' km \u00B7 '+(asset.params.sweepDeg>=360?'360\u00B0':asset.params.sweepDeg+'\u00B0')
+        : type==='gbad' ? 'engage '+asset.params.engagementKm+' km'
+        : asset.params.freqRangeMHz+' MHz \u00B7 '+asset.params.powerW+' W';
+      b.innerHTML = '<span>'+asset.name+'</span><small>'+detail+'</small>';
+      b.addEventListener('click', function(){
+        const center = map.getCenter();
+        const jitterLat = (Math.random()-0.5)*0.6, jitterLng = (Math.random()-0.5)*0.6;
+        const node = makeNode(type, center.lat+jitterLat, center.lng+jitterLng, asset.name, asset.params);
+        nodes.push(node); rebuildMarkers(); selectNode(node.id); toast(asset.name+' added');
+        scheduleRedraw();
+      });
+      container.appendChild(b);
+    });
+  });
+}
+buildLibrary();
+
+/* ---------------- Mapbox token / terrain source UI ---------------- */
+const tokenInput = document.getElementById('mapbox-token-input');
+const sourceReadout = document.getElementById('terrain-source-readout');
+if (MAPBOX_TOKEN) tokenInput.value = MAPBOX_TOKEN;
+function refreshSourceReadout(){
+  sourceReadout.textContent = terrainSourceLabel();
+}
+document.getElementById('btn-mapbox-apply').addEventListener('click', function(){
+  const v = tokenInput.value.trim();
+  MAPBOX_TOKEN = v;
+  invalidateTerrainCaches();
+  nodes.forEach(function(n){ n._groundElevM=null; n._groundFetching=false; if (n.type!=='gbad') invalidateCoverage(n); });
+  renderInspector();
+  toast(v ? 'Mapbox terrain enabled \u2014 recomputing coverage\u2026' : 'Mapbox token cleared \u2014 using Open Topo Data / simulated fallback');
+  setTimeout(refreshSourceReadout, 800);
+});
+setInterval(refreshSourceReadout, 2000);
+
+/* ---------------- Save / Load ---------------- */
+document.getElementById('btn-save').addEventListener('click', function(){
+  const cleanNodes = nodes.map(function(n){
+    const copy = {};
+    Object.keys(n).forEach(function(k){ if (k.charAt(0) !== '_') copy[k] = n[k]; });
+    return copy;
+  });
+  const data = { nodes: cleanNodes, nodeSeq, savedAt:new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cooperage-project.json';
+  a.click();
+  toast('Project saved');
+});
+document.getElementById('btn-load').addEventListener('click', function(){ document.getElementById('file-load').click(); });
+document.getElementById('file-load').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt){
+    try{
+      const data = JSON.parse(evt.target.result);
+      nodes = (data.nodes || []).map(normalizeLoadedNode);
+      nodeSeq = data.nodeSeq || (nodes.length+1);
+      selectedNodeId = null;
+      rebuildMarkers(); renderNodeList(); scheduleRedraw();
+      nodes.forEach(function(n){ if (n.type!=='gbad') invalidateCoverage(n); });
+      toast('Project loaded ('+nodes.length+' assets)');
+    }catch(err){ toast('Could not read file'); }
+  };
+  reader.readAsText(file);
+});
+function normalizeLoadedNode(n){
+  n._ring = null; n._ringGen = 0; n._groundElevM = null; n._groundFetching = false; n._fallbackRangeKm = null;
+  if (n.heightAglM==null) n.heightAglM = n.type==='radar'?6 : n.type==='jammer'?4 : 2;
+  if ((n.type==='radar'||n.type==='jammer') && n.targetHeightM==null) n.targetHeightM = 50;
+  return n;
+}
+
+/* ---------------- Export PNG ---------------- */
+document.getElementById('btn-png').addEventListener('click', function(){
+  toast('Rendering PNG\u2026');
+  html2canvas(document.getElementById('mapwrap'), { useCORS:true, backgroundColor:'#0a0d0d' }).then(function(canvas){
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'cooperage-view.png';
+    a.click();
+    toast('PNG exported');
+  }).catch(function(){ toast('PNG export failed (map tiles may block canvas export)'); });
+});
+
+/* ---------------- Export PDF report ---------------- */
+document.getElementById('btn-pdf').addEventListener('click', function(){
+  toast('Building report\u2026');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  let y = 48;
+  doc.setFont('courier','bold'); doc.setFontSize(16);
+  doc.text('COOPERAGE \u2014 RF Planning Report', 40, y); y+=10;
+  doc.setDrawColor(95,208,138); doc.line(40,y,555,y); y+=24;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.text('Generated: '+new Date().toLocaleString(), 40, y); y+=24;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text('Asset summary ('+nodes.length+' nodes)', 40, y); y+=16;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+  nodes.forEach(function(n){
+    if (y>760){ doc.addPage(); y=48; }
+    let detail = '';
+    if (n.type==='radio') detail = n.freqMHz+' MHz, '+n.powerW+' W, predicted range '+maxRangeKm(n).toFixed(1)+' km';
+    else if (n.type==='radar') detail = n.rangeKm+' km, '+(n.sweepDeg>=360?'360\u00B0':n.sweepDeg+'\u00B0 sector @ '+n.heading+'\u00B0');
+    else if (n.type==='jammer') detail = n.freqRangeMHz+' MHz, '+n.powerW+' W, '+n.mode+', effective radius '+rangeKmFromJammer(n).toFixed(1)+' km';
+    else if (n.type==='gbad') detail = 'engagement '+n.engagementKm+' km / warning '+n.warningKm+' km / no-fly '+n.noFlyKm+' km';
+    doc.text('\u2022 ['+TYPE_LABEL[n.type]+'] '+n.name+' \u2014 ('+n.lat.toFixed(4)+', '+n.lng.toFixed(4)+') \u2014 '+detail, 40, y);
+    y += 14;
+  });
+  y += 14;
+
+  if (losResult){
+    if (y>700){ doc.addPage(); y=48; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text('Line-of-sight analysis', 40, y); y+=16;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+    doc.text('Result: ' + (losResult.blocked ? 'LOS BLOCKED' : 'LOS AVAILABLE'), 40, y); y+=14;
+    doc.text('Path distance: '+losResult.dTotal.toFixed(2)+' km', 40, y); y+=14;
+    if (losResult.blocked) { doc.text('Obstruction at: '+losResult.obstructionDist.toFixed(2)+' km along path', 40, y); y+=14; }
+    y += 10;
+  }
+
+  doc.setFont('helvetica','italic'); doc.setFontSize(8);
+  doc.setTextColor(140,140,140);
+  doc.text('Demo output. Coverage figures use simplified free-space propagation and mock terrain data for illustration and are not suitable for operational use.', 40, 800, { maxWidth: 515 });
+
+  html2canvas(document.getElementById('mapwrap'), { useCORS:true, backgroundColor:'#0a0d0d' }).then(function(canvas){
+    doc.addPage();
+    const imgData = canvas.toDataURL('image/png');
+    const w = 515, h = w * (canvas.height/canvas.width);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text('Map view', 40, 40);
+    doc.addImage(imgData, 'PNG', 40, 55, w, Math.min(h, 700));
+    doc.save('cooperage-report.pdf');
+    toast('PDF report exported');
+  }).catch(function(){
+    doc.save('cooperage-report.pdf');
+    toast('PDF exported (map snapshot unavailable)');
+  });
+});
+
+/* ---------------- Toast ---------------- */
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+/* ---------------- Seed demo project ---------------- */
+function seedDemo(){
+  const r1 = makeNode('radio', 53.35, -7.9, 'Camp HQ \u2014 SYNAPS-V', ASSET_LIBRARY.radio[0].params);
+  const r2 = makeNode('radio', 53.55, -7.6, 'Forward Node \u2014 UHF repeater', ASSET_LIBRARY.radio[3].params);
+  const rad = makeNode('radar', 53.30, -8.35, 'Coastal watch \u2014 GM200', ASSET_LIBRARY.radar[1].params);
+  const gb = makeNode('gbad', 53.30, -8.35, 'Point defence \u2014 Mistral', ASSET_LIBRARY.gbad[0].params);
+  const jam = makeNode('jammer', 53.62, -7.75, 'C-UAS screen \u2014 Nerod', ASSET_LIBRARY.jammer[0].params);
+  nodes.push(r1,r2,rad,gb,jam);
+  rebuildMarkers();
+  setTimeout(function(){ toast('Demo project loaded \u2014 try the LOS Tool, Layers panel, and Asset Library'); }, 400);
+}
+
+/* ---------------- Init ---------------- */
+resizeOverlay();
+seedDemo();
+renderNodeList();
+setActiveTab('inspector');
+scheduleRedraw();
+map.whenReady(function(){ scheduleRedraw(); });
+
+})();
+</script>
+</body>
+</html>
