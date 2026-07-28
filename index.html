@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COOPERAGE // RF Planning &amp; Effects Visualisation</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d0d;
+    --panel:#111616;
+    --panel-2:#161d1d;
+    --line:#233030;
+    --text:#dbe4e0;
+    --muted:#7d8f8a;
+    --scan:#5fd08a;
+    --amber:#e0a838;
+    --red:#e0524a;
+    --blue:#4a9edd;
+    --purple:#b285e0;
+    --mono:'Share Tech Mono', monospace;
+    --disp:'Rajdhani', sans-serif;
+    --body:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--body);overflow:hidden;overscroll-behavior:none;}
+  #app{position:fixed;inset:0;width:100%;height:100%;display:flex;flex-direction:column;overscroll-behavior:none;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    height:52px;flex:0 0 52px;display:flex;align-items:center;gap:18px;
+    background:linear-gradient(180deg,#12191a,#0d1212);
+    border-bottom:1px solid var(--line);padding:0 16px;z-index:1000;position:relative;
+  }
+  #logo{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:1.5px;color:var(--text);}
+  #logo .ring{position:relative;width:22px;height:22px;border-radius:50%;border:2px solid var(--scan);}
+  #logo .ring::after{
+    content:'';position:absolute;top:50%;left:50%;width:9px;height:1.5px;background:var(--scan);
+    transform-origin:0 50%;transform:rotate(0deg);animation:sweep 2.4s linear infinite;
+  }
+  @keyframes sweep{to{transform:rotate(360deg);}}
+  #logo .sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;font-weight:400;margin-top:2px;}
+  .topdivider{width:1px;align-self:stretch;background:var(--line);margin:10px 0;flex:0 0 auto;}
+  #modebar{display:flex;gap:6px;overflow-x:auto;flex:1 1 auto;min-width:0;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  #modebar::-webkit-scrollbar{display:none;}
+  .mode-btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--muted);
+    background:transparent;border:1px solid var(--line);padding:7px 12px;cursor:pointer;
+    text-transform:uppercase;transition:.15s;flex:0 0 auto;white-space:nowrap;
+  }
+  .mode-btn:hover{color:var(--text);border-color:var(--muted);}
+  .mode-btn.active{color:var(--bg);background:var(--scan);border-color:var(--scan);}
+  #coords{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.5px;flex:0 0 auto;}
+  #coords b{color:var(--scan);font-weight:400;}
+  #logo{flex:0 0 auto;}
+  .mobile-only{display:none;}
+  #drawer-backdrop{display:none;}
+
+  @media (max-width:800px){
+    #coords{display:none;}
+    .mobile-only{display:inline-flex;align-items:center;justify-content:center;}
+    #leftrail, #rightpanel{
+      position:fixed;top:52px;bottom:0;width:84vw;max-width:320px;z-index:1500;
+      transition:transform .25s ease;box-shadow:0 0 24px rgba(0,0,0,.65);
+    }
+    #leftrail{left:0;transform:translateX(-101%);}
+    #leftrail.open{transform:translateX(0);}
+    #rightpanel{right:0;transform:translateX(101%);}
+    #rightpanel.open{transform:translateX(0);}
+    #mapwrap{width:100%;}
+    #drawer-backdrop{
+      display:block;position:fixed;top:52px;left:0;right:0;bottom:0;
+      background:rgba(0,0,0,0);pointer-events:none;transition:background .25s ease;z-index:1400;
+    }
+    #drawer-backdrop.show{background:rgba(0,0,0,.5);pointer-events:auto;}
+  }
+
+  /* ---------- Layout ---------- */
+  #main{flex:1;display:flex;min-height:0;position:relative;}
+
+  /* left rail: layers + asset library */
+  #leftrail{
+    width:250px;flex:0 0 250px;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  .rail-section{border-bottom:1px solid var(--line);padding:12px 14px;}
+  .rail-title{
+    font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--scan);
+    text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;
+  }
+  .rail-title::before{content:'';width:6px;height:6px;background:var(--scan);display:inline-block;}
+  .layer-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;color:var(--text);}
+  .layer-row input[type=checkbox]{accent-color:var(--scan);width:14px;height:14px;cursor:pointer;}
+  .layer-swatch{width:10px;height:10px;border-radius:2px;flex:0 0 auto;}
+  .asset-btn{
+    display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:12px;border-radius:2px;transition:.15s;
+  }
+  .asset-btn:hover{border-color:var(--scan);background:#182121;}
+  .asset-btn small{color:var(--muted);font-family:var(--mono);font-size:10px;}
+  .asset-cat{font-size:9px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin:10px 0 4px;font-family:var(--mono);}
+
+  /* map */
+  #mapwrap{flex:1;position:relative;min-width:0;}
+  #map{position:absolute;inset:0;background:#0a0d0d;}
+  #overlay-canvas{position:absolute;top:0;left:0;pointer-events:none;z-index:450;}
+  #crosshair-hint{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(10,13,13,.85);border:1px solid var(--scan);color:var(--scan);
+    font-family:var(--mono);font-size:11px;padding:6px 14px;letter-spacing:.5px;z-index:900;display:none;
+  }
+  #signal-legend{
+    position:absolute;bottom:10px;left:10px;z-index:900;
+    background:rgba(10,13,13,.88);border:1px solid var(--line);border-radius:2px;
+    padding:8px 10px;min-width:170px;
+  }
+  #signal-legend .legend-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;}
+  #signal-legend .legend-bar{height:8px;border-radius:2px;background:linear-gradient(to right,#3c6edc,#46be78,#e6c828,#de3c28);}
+  #signal-legend .legend-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px;}
+
+  /* right panel */
+  #rightpanel{
+    width:300px;flex:0 0 300px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  #rightpanel .rp-tabs{display:flex;border-bottom:1px solid var(--line);}
+  .rp-tab{
+    flex:1;text-align:center;padding:10px 4px;font-family:var(--mono);font-size:10px;letter-spacing:1px;
+    color:var(--muted);cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;
+  }
+  .rp-tab.active{color:var(--scan);border-bottom-color:var(--scan);}
+  #rp-body{flex:1;overflow-y:auto;padding:14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:4px;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;}
+  .field input[type=text], .field input[type=number], .field select{
+    width:100%;background:#0d1212;border:1px solid var(--line);color:var(--text);
+    padding:7px 8px;font-size:12.5px;border-radius:2px;font-family:var(--body);
+  }
+  .field input[type=range]{width:100%;accent-color:var(--scan);}
+  .field .rangeval{float:right;font-family:var(--mono);color:var(--scan);font-size:11px;}
+  .fieldrow{display:flex;gap:8px;}
+  .fieldrow .field{flex:1;}
+  .btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;
+    padding:9px 10px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);
+    cursor:pointer;border-radius:2px;width:100%;margin-top:6px;transition:.15s;
+  }
+  .btn:hover{border-color:var(--scan);color:var(--scan);}
+  .btn.primary{background:var(--scan);color:#0a0d0d;border-color:var(--scan);font-weight:600;}
+  .btn.primary:hover{background:#7bdba0;color:#0a0d0d;}
+  .btn.danger:hover{border-color:var(--red);color:var(--red);}
+  .btn-row{display:flex;gap:6px;}
+  .btn-row .btn{margin-top:0;}
+  .empty-state{color:var(--muted);font-size:12px;text-align:center;padding:40px 10px;line-height:1.6;}
+  .empty-state .ico{font-size:26px;display:block;margin-bottom:10px;opacity:.5;}
+  .node-list-item{
+    display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--line);
+    margin-bottom:6px;border-radius:2px;cursor:pointer;background:var(--panel-2);
+  }
+  .node-list-item:hover{border-color:var(--muted);}
+  .node-list-item.sel{border-color:var(--scan);}
+  .node-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+  .node-list-item .nname{font-size:12px;flex:1;}
+  .node-list-item .ntype{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;}
+  .section-label{font-family:var(--mono);font-size:10px;color:var(--scan);letter-spacing:1.5px;text-transform:uppercase;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line);}
+  .section-label:first-child{margin-top:0;padding-top:0;border-top:none;}
+  #profile-canvas-wrap{background:#0d1212;border:1px solid var(--line);border-radius:2px;padding:8px;}
+  .readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;padding:4px 0;border-bottom:1px dashed var(--line);}
+  .readout b{color:var(--text);font-weight:400;}
+  .readout.ok b{color:var(--scan);}
+  .readout.bad b{color:var(--red);}
+  .badge{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:2px 8px;border-radius:2px;text-transform:uppercase;}
+  .badge.ok{background:rgba(95,208,138,.15);color:var(--scan);border:1px solid var(--scan);}
+  .badge.bad{background:rgba(224,82,74,.15);color:var(--red);border:1px solid var(--red);}
+
+  /* corner-bracket HUD framing for panels */
+  .hud-frame{position:relative;}
+  .hud-frame::before,.hud-frame::after{
+    content:'';position:absolute;width:8px;height:8px;border:1px solid var(--scan);opacity:.6;pointer-events:none;
+  }
+  .hud-frame::before{top:-1px;left:-1px;border-right:none;border-bottom:none;}
+  .hud-frame::after{bottom:-1px;right:-1px;border-left:none;border-top:none;}
+
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-track{background:var(--panel);}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#12191a;border:1px solid var(--scan);color:var(--scan);font-family:var(--mono);
+    font-size:12px;padding:9px 18px;border-radius:2px;z-index:2000;opacity:0;transition:opacity .25s;pointer-events:none;
+  }
+  #toast.show{opacity:1;}
+
+  /* ---------------- 5G tower alignment (right panel tab) ---------------- */
+  #align-status{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:12px;}
+  #align-ring-wrap{position:relative;width:100%;max-width:230px;aspect-ratio:1/1;margin:0 auto 14px;}
+  #align-canvas{width:100%;height:100%;}
+  .align-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);}
+  .align-row b{color:var(--text);font-weight:400;}
+  .align-tower-item{
+    display:flex;justify-content:space-between;align-items:center;padding:7px 9px;
+    border:1px solid var(--line);margin-bottom:5px;border-radius:2px;cursor:pointer;background:var(--panel-2);font-size:11.5px;
+  }
+  .align-tower-item:hover{border-color:var(--muted);}
+  .align-tower-item.selected{border-color:var(--scan);color:var(--scan);}
+  .align-tower-item .atn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:8px;}
+  .align-tower-item .atd{flex:0 0 auto;font-family:var(--mono);color:var(--muted);}
+
+  #route-dest-results{margin-top:6px;}
+  .geo-result{
+    padding:6px 8px;border:1px solid var(--line);margin-bottom:4px;border-radius:2px;
+    cursor:pointer;font-size:11.5px;background:var(--panel-2);
+  }
+  .geo-result:hover{border-color:var(--muted);}
+  .saved-route-item{
+    border:1px solid var(--line);border-radius:2px;padding:8px 9px;margin-bottom:7px;background:var(--panel-2);
+  }
+  .saved-route-item .sr-top{display:flex;align-items:center;gap:8px;}
+  .saved-route-item .sr-name{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
+  .saved-route-item .sr-stats{font-size:10.5px;color:var(--muted);margin-top:4px;font-family:var(--mono);}
+  .saved-route-item .sr-actions{display:flex;gap:5px;margin-top:6px;}
+  .saved-route-item .sr-actions button{
+    flex:1;font-size:10px;padding:4px 0;background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    cursor:pointer;border-radius:2px;font-family:var(--mono);text-transform:uppercase;
+  }
+  .saved-route-item .sr-actions button:hover{color:var(--text);border-color:var(--muted);}
+
+  .leaflet-container{background:#0a0d0d;font-family:var(--body);}
+  .leaflet-control-attribution{background:rgba(10,13,13,.7)!important;color:var(--muted)!important;font-size:9px!important;}
+  .leaflet-control-attribution a{color:var(--muted)!important;}
+  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important;}
+
+  .node-marker{
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:13px;font-weight:700;
+    border-radius:50%;border:2px solid #0a0d0d;box-shadow:0 0 0 1.5px currentColor,0 0 8px rgba(0,0,0,.6);
+  }
+  .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:2px;}
+  .leaflet-popup-tip{background:var(--panel);}
+  .leaflet-popup-content{font-family:var(--body);font-size:12px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div id="logo"><span class="ring"></span>COOPERAGE<span class="sub" style="margin-left:4px;">RF &amp; EFFECTS PLANNER</span></div>
+    <button class="mode-btn mobile-only" id="btn-layers-toggle" title="Layers &amp; assets">&#9776;</button>
+    <div class="topdivider"></div>
+    <div id="modebar">
+      <button class="mode-btn active" data-mode="select">Select</button>
+      <button class="mode-btn" data-mode="radio">+ Radio</button>
+      <button class="mode-btn" data-mode="radar">+ Radar</button>
+      <button class="mode-btn" data-mode="jammer">+ Jammer</button>
+      <button class="mode-btn" data-mode="gbad">+ GBAD</button>
+      <button class="mode-btn" data-mode="los">LOS Tool</button>
+    </div>
+    <div id="coords">LAT <b id="coord-lat">--</b>&nbsp;&nbsp;LNG <b id="coord-lng">--</b>&nbsp;&nbsp;ZOOM <b id="coord-zoom">--</b></div>
+    <button class="mode-btn mobile-only" id="btn-inspector-toggle" title="Inspector panel">&#9635;</button>
+  </div>
+
+  <div id="drawer-backdrop"></div>
+  <div id="main">
+    <div id="leftrail">
+      <div class="rail-section">
+        <div class="rail-title">Basemap</div>
+        <div class="field" style="margin-bottom:0;">
+          <select id="basemap-select">
+            <option value="topo">Topographic (terrain shading)</option>
+            <option value="streets">Streets (OpenStreetMap)</option>
+            <option value="dark">Dark tactical</option>
+          </select>
+        </div>
+      </div>
+      <div class="rail-section">
+        <div class="rail-title">Coverage detail</div>
+        <div class="field" style="margin-bottom:4px;">
+          <select id="detail-select">
+            <option value="detailed" selected>Detailed viewshed (real terrain, slower)</option>
+            <option value="fast">Fast estimate (instant, less accurate)</option>
+          </select>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;">Detailed mode checks line-of-sight cell-by-cell (matches how MeshCore-style coverage maps look) and can take a second or two per asset. Switch to Fast if it feels sluggish on your device.</div>
+      </div>
+      <div class="rail-section">
+        <div class="rail-title">Layers</div>
+        <label class="layer-row"><input type="checkbox" data-layer="radio" checked><span class="layer-swatch" style="background:#4a9edd;"></span>Comms coverage</label>
+        <label class="layer-row"><input type="checkbox" data-layer="radar" checked><span class="layer-swatch" style="background:#5fd08a;"></span>Radar coverage</label>
+        <label class="layer-row"><input type="checkbox" data-layer="jammer" checked><span class="layer-swatch" style="background:#b285e0;"></span>EW / jamming</label>
+        <label class="layer-row"><input type="checkbox" data-layer="gbad" checked><span class="layer-swatch" style="background:#e0524a;"></span>GBAD engagement</label>
+        <label class="layer-row"><input type="checkbox" data-layer="los" checked><span class="layer-swatch" style="background:#e0a838;"></span>LOS / terrain</label>
+        <label class="layer-row"><input type="checkbox" data-layer="labels" checked><span class="layer-swatch" style="background:#7d8f8a;"></span>Node labels</label>
+        <label class="layer-row"><input type="checkbox" data-layer="towers"><span class="layer-swatch" style="background:#ff9d3d;"></span>Mobile towers (OSM)</label>
+        <div id="towers-status" style="font-size:10.5px;color:var(--muted);padding:2px 0 4px 22px;"></div>
+      </div>
+
+      <div class="rail-section" style="flex:1;">
+        <div class="rail-title">Asset library</div>
+        <div class="asset-cat">Radios</div>
+        <div id="lib-radio"></div>
+        <div class="asset-cat">Radar</div>
+        <div id="lib-radar"></div>
+        <div class="asset-cat">Ground-based air defence</div>
+        <div id="lib-gbad"></div>
+        <div class="asset-cat">Electronic warfare</div>
+        <div id="lib-jammer"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">5G tower alignment</div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:8px;">
+          Uses your phone's GPS and compass to help point a directional antenna at a mobile tower. Tap any tower on the map, or pick one from the Align tab's nearby list, to target it. Compass accuracy near a vehicle body can vary \u2014 test before relying on it.
+        </div>
+        <button class="btn primary" id="btn-open-align">Open Align tab</button>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Vehicle radio profile</div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:8px;">
+          The radio you'll have mounted in the vehicle. Used to check comms coverage along planned routes against your placed fixed radios.
+        </div>
+        <div class="fieldrow">
+          <div class="field"><label>Frequency (MHz)</label><input type="number" id="veh-freq" value="60"></div>
+          <div class="field"><label>RF power (W)</label><input type="number" id="veh-power" value="10"></div>
+        </div>
+        <div class="fieldrow">
+          <div class="field"><label>Antenna gain (dBi)</label><input type="number" id="veh-gain" value="2" step="0.5"></div>
+          <div class="field"><label>Mast height (m AGL)</label><input type="number" id="veh-height" value="2.5" step="0.5"></div>
+        </div>
+        <div class="fieldrow">
+          <div class="field"><label>Cable loss (dB)</label><input type="number" id="veh-cable" value="1" step="0.5"></div>
+          <div class="field"><label>Rx sensitivity (dBm)</label><input type="number" id="veh-sens" value="-110"></div>
+        </div>
+        <div class="field"><label>Fade margin (dB)</label><input type="number" id="veh-fade" value="10"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Route planning</div>
+        <div class="field">
+          <label>Origin</label>
+          <div class="
