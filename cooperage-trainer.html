@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COOPERAGE TRAINER // GBAD Siting Simulator</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d0d;--panel:#111616;--panel-2:#161d1d;--line:#233030;
+    --text:#dbe4e0;--muted:#7d8f8a;--scan:#5fd08a;--amber:#e0a838;
+    --red:#e0524a;--blue:#4a9edd;--purple:#b285e0;--orange:#ff9d3d;
+    --mono:'Share Tech Mono',monospace;--disp:'Rajdhani',sans-serif;--body:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--body);overflow:hidden;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+  #topbar{height:52px;flex:0 0 52px;display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,#12191a,#0d1212);border-bottom:1px solid var(--line);padding:0 14px;z-index:1000;}
+  #logo{display:flex;align-items:center;gap:8px;font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:1px;flex:0 0 auto;}
+  #logo .ring{width:20px;height:20px;border-radius:50%;border:2px solid var(--red);position:relative;}
+  #logo .ring::after{content:'';position:absolute;top:50%;left:50%;width:8px;height:1.5px;background:var(--red);transform-origin:0 50%;transform:rotate(0deg);animation:sweep 2.4s linear infinite;}
+  @keyframes sweep{to{transform:rotate(360deg);}}
+  #logo .sub{font-family:var(--mono);font-size:9px;color:var(--red);letter-spacing:2px;font-weight:400;margin-top:1px;}
+  .topdivider{width:1px;align-self:stretch;background:var(--line);margin:10px 0;flex:0 0 auto;}
+  #modebar{display:flex;gap:5px;overflow-x:auto;flex:1 1 auto;min-width:0;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  #modebar::-webkit-scrollbar{display:none;}
+  .mode-btn{font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--muted);background:transparent;border:1px solid var(--line);padding:6px 11px;cursor:pointer;text-transform:uppercase;transition:.15s;flex:0 0 auto;white-space:nowrap;}
+  .mode-btn:hover{color:var(--text);border-color:var(--muted);}
+  .mode-btn.active{color:var(--bg);background:var(--scan);border-color:var(--scan);}
+  .mode-btn.danger.active{background:var(--red);border-color:var(--red);}
+  #coords{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted);flex:0 0 auto;display:none;}
+  #main{flex:1;display:flex;min-height:0;}
+  #leftrail{width:242px;flex:0 0 242px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;}
+  .rail-section{border-bottom:1px solid var(--line);padding:10px 12px;}
+  .rail-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+  .rail-title::before{content:'';width:5px;height:5px;background:var(--red);display:inline-block;}
+  .asset-btn{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:7px 9px;margin-bottom:5px;cursor:pointer;font-size:12px;border-radius:2px;transition:.15s;}
+  .asset-btn:hover{border-color:var(--red);}
+  .asset-btn small{color:var(--muted);font-family:var(--mono);font-size:9px;}
+  .field{margin-bottom:10px;}
+  .field label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;}
+  .field input,.field select{width:100%;background:#0d1212;border:1px solid var(--line);color:var(--text);padding:6px 8px;font-size:12px;border-radius:2px;font-family:var(--body);}
+  .field input[type=range]{accent-color:var(--red);}
+  .fieldrow{display:flex;gap:7px;} .fieldrow .field{flex:1;}
+  .btn{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;padding:8px 10px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);cursor:pointer;border-radius:2px;width:100%;margin-top:5px;transition:.15s;}
+  .btn:hover{border-color:var(--muted);}
+  .btn.primary{background:var(--scan);color:#0a0d0d;border-color:var(--scan);font-weight:700;}
+  .btn.primary:hover{background:#7bdba0;}
+  .btn.danger{background:var(--red);color:#fff;border-color:var(--red);}
+  .btn-row{display:flex;gap:5px;} .btn-row .btn{margin-top:0;}
+  #mapwrap{flex:1;position:relative;min-width:0;}
+  #map{position:absolute;inset:0;}
+  #overlay-canvas{position:absolute;top:0;left:0;pointer-events:none;z-index:450;}
+  #crosshair-hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(10,13,13,.88);border:1px solid var(--red);color:var(--red);font-family:var(--mono);font-size:11px;padding:6px 14px;letter-spacing:.5px;z-index:900;display:none;}
+  #rightpanel{width:290px;flex:0 0 290px;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;}
+  .rp-tabs{display:flex;border-bottom:1px solid var(--line);}
+  .rp-tab{flex:1;text-align:center;padding:9px 4px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted);cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;}
+  .rp-tab.active{color:var(--red);border-bottom-color:var(--red);}
+  #rp-body{flex:1;overflow-y:auto;padding:12px;}
+  .section-label{font-family:var(--mono);font-size:10px;color:var(--red);letter-spacing:1.5px;text-transform:uppercase;margin:14px 0 7px;padding-top:10px;border-top:1px solid var(--line);}
+  .section-label:first-child{margin-top:0;padding-top:0;border-top:none;}
+  .readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;padding:4px 0;border-bottom:1px dashed var(--line);}
+  .readout b{color:var(--text);font-weight:400;}
+  .readout.ok b{color:var(--scan);}
+  .readout.bad b{color:var(--red);}
+  .readout.warn b{color:var(--amber);}
+  .event-item{padding:6px 0;border-bottom:1px dashed var(--line);font-size:11.5px;}
+  .event-item .et{font-family:var(--mono);font-size:10px;margin-bottom:2px;}
+  .et.detect{color:var(--amber);} .et.engage{color:var(--red);} .et.evade{color:var(--scan);} .et.miss{color:var(--muted);}
+  .empty-state{color:var(--muted);font-size:12px;text-align:center;padding:30px 10px;line-height:1.6;}
+  .asset-list-item{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--line);margin-bottom:5px;border-radius:2px;font-size:12px;background:var(--panel-2);}
+  .asset-list-item .adot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+  .asset-list-item .aname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .asset-list-item .adelete{background:none;border:1px solid var(--line);color:var(--muted);padding:2px 6px;cursor:pointer;font-size:10px;font-family:var(--mono);border-radius:2px;}
+  .asset-list-item .adelete:hover{color:var(--red);border-color:var(--red);}
+  .waypoint-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--line);margin-bottom:4px;border-radius:2px;font-size:11.5px;font-family:var(--mono);background:var(--panel-2);}
+  .waypoint-item .wi{flex:0 0 auto;color:var(--amber);}
+  .waypoint-item .wl{flex:1;color:var(--muted);}
+  .waypoint-item .wdel{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;}
+  .waypoint-item .walt{width:60px;background:#0d1212;border:1px solid var(--line);color:var(--text);padding:2px 5px;font-size:11px;border-radius:2px;font-family:var(--mono);}
+  #sim-timeline{background:#0a0f0f;border-top:1px solid var(--line);height:52px;flex:0 0 52px;position:relative;padding:6px 10px;}
+  #timeline-canvas{width:100%;height:100%;}
+  #sim-counter{position:absolute;top:4px;right:10px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#12191a;border:1px solid var(--red);color:var(--red);font-family:var(--mono);font-size:12px;padding:8px 16px;border-radius:2px;z-index:2000;opacity:0;transition:opacity .25s;pointer-events:none;}
+  #toast.show{opacity:1;}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:var(--panel);} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+  .leaflet-container{background:#0a0d0d;font-family:var(--body);}
+  .leaflet-control-attribution{background:rgba(10,13,13,.7)!important;color:var(--muted)!important;font-size:9px!important;}
+  .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:2px;}
+  .leaflet-popup-tip{background:var(--panel);}
+  #intercept-flash{position:absolute;inset:0;z-index:2000;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;}
+  #intercept-flash .flash-inner{background:rgba(224,82,74,.92);color:#fff;font-family:var(--mono);font-size:26px;letter-spacing:3px;padding:14px 32px;border-radius:4px;text-align:center;box-shadow:0 0 40px rgba(224,82,74,.6);}
+  #intercept-flash .flash-inner small{display:block;font-size:13px;opacity:.85;margin-top:4px;letter-spacing:1px;}
+  .live-event{animation:fadeIn .3s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+  @media(max-width:800px){
+    #leftrail,#rightpanel{position:fixed;top:52px;bottom:0;width:84vw;max-width:300px;z-index:1500;transition:transform .25s ease;}
+    #leftrail{left:0;transform:translateX(-101%);}
+    #leftrail.open{transform:translateX(0);}
+    #rightpanel{right:0;transform:translateX(101%);}
+    #rightpanel.open{transform:translateX(0);}
+    #mapwrap{width:100%;}
+    #drawer-backdrop{display:block;position:fixed;top:52px;left:0;right:0;bottom:0;background:rgba(0,0,0,0);pointer-events:none;transition:background .25s;z-index:1400;}
+    #drawer-backdrop.show{background:rgba(0,0,0,.55);pointer-events:auto;}
+    .mobile-only{display:inline-flex!important;}
+  }
+  .mobile-only{display:none;align-items:center;justify-content:center;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="logo">
+      <span class="ring"></span>
+      COOPERAGE<span style="color:var(--red);margin-left:4px;">TRAINER</span>
+      <span class="sub" style="margin-left:6px;">GBAD SITING SIM</span>
+    </div>
+    <button class="mode-btn mobile-only" id="btn-left-drawer">&#9776;</button>
+    <div class="topdivider"></div>
+    <div id="modebar">
+      <button class="mode-btn active" data-mode="select">Select</button>
+      <button class="mode-btn" data-mode="radar">+ Radar</button>
+      <button class="mode-btn" data-mode="gbad">+ GBAD</button>
+      <button class="mode-btn" data-mode="waypoint">+ Waypoint</button>
+    </div>
+    <button class="mode-btn mobile-only" id="btn-right-drawer" style="margin-left:auto;">&#9635;</button>
+  </div>
+  <div id="drawer-backdrop"></div>
+  <div id="main">
+    <div id="leftrail">
+
+      <div class="rail-section">
+        <div class="rail-title">Radar assets</div>
+        <div id="lib-radar"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">GBAD assets</div>
+        <div id="lib-gbad"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Threat aircraft</div>
+        <div class="field">
+          <label>Aircraft type</label>
+          <select id="ac-type">
+            <option value="helo">Helicopter (~150 km/h)</option>
+            <option value="jet-low">Fast jet – nap of earth (~800 km/h)</option>
+            <option value="jet-med">Fast jet – medium altitude (~800 km/h)</option>
+            <option value="drone-atk">Attack drone (~200 km/h)</option>
+            <option value="uas-small">Small UAS (~80 km/h)</option>
+          </select>
+        </div>
+        <div class="fieldrow">
+          <div class="field"><label>Speed (km/h)</label><input type="number" id="ac-speed" value="150"></div>
+          <div class="field"><label>Altitude (m AGL)</label><input type="number" id="ac-alt" value="150"></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:6px;">Click <b style="color:var(--amber);">+ Waypoint</b> in the top bar then tap the map to build the threat path. Each waypoint can have its own altitude.</div>
+        <div class="btn-row">
+          <button class="btn danger" id="btn-clear-path">Clear path</button>
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-title">Simulation</div>
+        <div class="field">
+          <label>Mapbox token (for real terrain)</label>
+          <input type="text" id="mapbox-token-input" placeholder="pk.eyJ1…" autocomplete="off" spellcheck="false">
+          <button class="btn" id="btn-mapbox-apply" style="margin-top:5px;">Use Mapbox terrain</button>
+          <div id="terrain-source-readout" style="font-size:10px;color:var(--muted);margin-top:4px;font-family:var(--mono);">Source: Simulated</div>
+        </div>
+        <div class="field">
+          <label>Playback speed</label>
+          <select id="sim-speed">
+            <option value="1">1× real time</option>
+            <option value="5" selected>5× speed</option>
+            <option value="20">20× speed</option>
+            <option value="60">60× speed</option>
+          </select>
+        </div>
+        <button class="btn primary" id="btn-run-sim">&#9654; Run Simulation</button>
+        <button class="btn" id="btn-pause-sim" disabled>&#9646;&#9646; Pause</button>
+        <button class="btn" id="btn-reset-sim">&#9632; Reset</button>
+        <div id="preflight-status" style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
+      </div>
+
+      <div class="rail-section" style="flex:1;">
+        <div class="rail-title">About this trainer</div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.6;">
+          Place radars and GBAD assets, then draw a threat path. Run the simulation to see if your asset siting would intercept the threat, and where the coverage gaps are.<br><br>
+          Students can experiment — "What if I moved the RBS-70 further north?" — and immediately see the effect on intercept timing.
+        </div>
+      </div>
+
+    </div>
+
+    <div id="mapwrap">
+      <div id="map"></div>
+      <canvas id="overlay-canvas"></canvas>
+      <div id="crosshair-hint">CLICK MAP TO ADD WAYPOINT</div>
+      <div id="intercept-flash">
+        <div class="flash-inner">&#9888; INTERCEPTED <small id="flash-detail"></small></div>
+      </div>
+    </div>
+
+    <div id="rightpanel">
+      <div class="rp-tabs">
+        <div class="rp-tab active" data-tab="setup">Setup</div>
+        <div class="rp-tab" data-tab="results">Results</div>
+      </div>
+      <div id="rp-body"></div>
+      <div id="sim-timeline">
+        <canvas id="timeline-canvas"></canvas>
+        <div id="sim-counter">T+0s</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+'use strict';
+if(typeof L==='undefined'){document.body.innerHTML='<div style="background:#0a0d0d;color:#e0524a;font-family:monospace;height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px"><div><div style="font-size:16px;margin-bottom:12px;">MAP LIBRARY FAILED TO LOAD</div><button onclick="location.reload()" style="background:#5fd08a;color:#0a0d0d;border:none;padding:10px 22px;font-family:monospace;cursor:pointer;">RELOAD</button></div></div>';return;}
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const RADAR_LIB = [
+  { name:'Giraffe (gnd surveillance)', rangeKm:60, color:'#5fd08a' },
+  { name:'GM200 (air surveillance)',   rangeKm:120,color:'#5fd08a' },
+  { name:'GM400 (long range air)',      rangeKm:200,color:'#5fd08a' },
+  { name:'Ground surveillance sector', rangeKm:20, color:'#5fd08a' }
+];
+const GBAD_LIB = [
+  { name:'Mistral (VSHORAD)',  engKm:6,  warnKm:9,  minAltM:5,  maxAltM:3000, reactionS:5,  reloadS:20,  shotsBeforeReload:3, color:'#e0524a' },
+  { name:'RBS-70',             engKm:8,  warnKm:11, minAltM:5,  maxAltM:5000, reactionS:5,  reloadS:30,  shotsBeforeReload:3, color:'#e06820' },
+  { name:'Starstreak',         engKm:7,  warnKm:10, minAltM:5,  maxAltM:5500, reactionS:3,  reloadS:15,  shotsBeforeReload:3, color:'#e0c820' },
+  { name:'Stinger (MANPADS)',  engKm:4.8,warnKm:7,  minAltM:10, maxAltM:3800, reactionS:10, reloadS:25,  shotsBeforeReload:2, color:'#c030c0' },
+  { name:'NASAMS (med range)', engKm:25, warnKm:30, minAltM:30, maxAltM:15000,reactionS:30, reloadS:60,  shotsBeforeReload:6, color:'#4a9edd' }
+];
+const AC_DEFAULTS = {
+  'helo':     { speedKmh:150, altM:150,  icon:'helo', label:'Helicopter' },
+  'jet-low':  { speedKmh:800, altM:100,  icon:'jet',  label:'Fast jet (nap of earth)' },
+  'jet-med':  { speedKmh:800, altM:2000, icon:'jet',  label:'Fast jet (medium alt)' },
+  'drone-atk':{ speedKmh:200, altM:300,  icon:'drone',label:'Attack drone' },
+  'uas-small':{ speedKmh:80,  altM:100,  icon:'drone',label:'Small UAS' }
+};
+const SIM_STEP_S = 0.5;          // simulation time resolution
+const LOS_TERRAIN_STEPS = 6;     // samples along each LOS ray
+const RADAR_CUEING = true;        // GBAD needs radar cue to engage
+
+// ============================================================
+// STATE
+// ============================================================
+let MAPBOX_TOKEN = '';
+let mode = 'select';
+let assets = [];      // placed radar + gbad nodes
+let assetSeq = 1;
+let waypoints = [];   // [{lat,lng,altM}]
+let wpMarkers = [];
+let pathLine = null;
+let threatType = 'helo';
+let simData = null;   // pre-computed simulation data
+let simState = { running:false, frame:0, rafId:null, lastWallMs:null, accumS:0 };
+let engagementMarkers = [];
+let aircraftMarker = null;
+let currentTab = 'setup';
+const tileCache = new Map();
+
+// ============================================================
+// MAP
+// ============================================================
+const map = L.map('map',{zoomControl:true,attributionControl:true})
+  .setView([53.35,-7.9],8);
+L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)'}).addTo(map);
+const assetLayer = L.layerGroup().addTo(map);
+const wpLayer = L.layerGroup().addTo(map);
+const simLayer = L.layerGroup().addTo(map);
+
+// canvas overlay
+const overlayCanvas = document.createElement('canvas');
+overlayCanvas.id='overlay-canvas';
+map.getContainer().appendChild(overlayCanvas);
+overlayCanvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:450;';
+const octx = overlayCanvas.getContext('2d');
+let redrawPending = false;
+function resizeOverlay(){const s=map.getSize();overlayCanvas.width=s.x;overlayCanvas.height=s.y;overlayCanvas.style.width=s.x+'px';overlayCanvas.style.height=s.y+'px';}
+function scheduleRedraw(){if(redrawPending)return;redrawPending=true;requestAnimationFrame(()=>{redrawPending=false;redraw();});}
+map.on('move zoom viewreset resize',scheduleRedraw);
+window.addEventListener('resize',()=>{resizeOverlay();scheduleRedraw();});
+
+// ============================================================
+// GEO HELPERS
+// ============================================================
+const R_EARTH=6371;
+function toRad(d){return d*Math.PI/180;}
+function toDeg(r){return r*180/Math.PI;}
+function haversineKm(a,b,c,d){const dLat=toRad(c-a),dLng=toRad(d-b);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLng/2)**2;return 2*R_EARTH*Math.asin(Math.sqrt(x));}
+function bearingDeg(a,b,c,d){const y=Math.sin(toRad(d-b))*Math.cos(toRad(c));const x=Math.cos(toRad(a))*Math.sin(toRad(c))-Math.sin(toRad(a))*Math.cos(toRad(c))*Math.cos(toRad(d-b));return(toDeg(Math.atan2(y,x))+360)%360;}
+function destPt(lat,lng,brg,dKm){const br=toRad(brg),la=toRad(lat),lo=toRad(lng),d=dKm/R_EARTH;const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br));const lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));return[toDeg(la2),toDeg(lo2)];}
+function ll2px(lat,lng){const p=map.latLngToContainerPoint(L.latLng(lat,lng));return[p.x,p.y];}
+function curvatureBulgeM(d1,d2){return d1*d2*0.0588;}
+
+// cumulative distances along a lat/lng polyline
+function pathDistances(pts){let t=0;const c=[0];for(let i=1;i<pts.length;i++){t+=haversineKm(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);c.push(t);}return{c,total:t};}
+function sampleAtDist(pts,c,d){if(d<=0)return pts[0];if(d>=c[c.length-1])return pts[pts.length-1];let i=0;while(i<c.length-1&&c[i+1]<d)i++;const t=c[i+1]-c[i]>0?(d-c[i])/(c[i+1]-c[i]):0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*t,pts[i][1]+(pts[i+1][1]-pts[i][1])*t];}
+function altAtDist(wpArr,c,d){if(d<=0)return wpArr[0].altM;if(d>=c[c.length-1])return wpArr[wpArr.length-1].altM;let i=0;while(i<c.length-1&&c[i+1]<d)i++;const t=c[i+1]-c[i]>0?(d-c[i])/(c[i+1]-c[i]):0;return wpArr[i].altM+(wpArr[i+1].altM-wpArr[i].altM)*t;}
+
+// ============================================================
+// TERRAIN ELEVATION (Mapbox RGB tiles with mock fallback)
+// ============================================================
+function mockElev(lat,lng){const a=Math.sin(lat*6.0)*Math.cos(lng*5.5),b=Math.sin(lat*9.3+lng*8.1),c=Math.sin((lat+lng)*15.1)*.5;return Math.max(0,40+35*a+18*b+8*c);}
+async function getMapboxTile(z,x,y){const key=z+'/'+x+'/'+y;if(tileCache.has(key))return tileCache.get(key);const p=(async()=>{try{const url='https://api.mapbox.com/v4/mapbox.terrain-rgb/'+z+'/'+x+'/'+y+'.pngraw?access_token='+encodeURIComponent(MAPBOX_TOKEN);const r=await fetch(url);if(!r.ok)throw new Error();const b=await r.blob();const bmp=await createImageBitmap(b);const cv=document.createElement('canvas');cv.width=256;cv.height=256;cv.getContext('2d').drawImage(bmp,0,0);return cv.getContext('2d').getImageData(0,0,256,256);}catch(e){return null;}})();tileCache.set(key,p);return p;}
+function lngLatToTileFrac(lng,lat,z){const n=2**z;return{xE:(lng+180)/360*n,yE:(1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n};}
+async function elevationFromMapbox(lat,lng){const z=12,{xE,yE}=lngLatToTileFrac(lng,lat,z),x=Math.floor(xE),y=Math.floor(yE);const img=await getMapboxTile(z,x,y);if(!img)return null;const px=Math.min(255,Math.max(0,Math.floor((xE-x)*256))),py=Math.min(255,Math.max(0,Math.floor((yE-y)*256)));const i=(py*256+px)*4;return-10000+(img.data[i]*65536+img.data[i+1]*256+img.data[i+2])*.1;}
+let terrainSource='mock';
+async function getElev(lat,lng){if(MAPBOX_TOKEN){const v=await elevationFromMapbox(lat,lng);if(v!=null){terrainSource='mapbox';return v;}}terrainSource='mock';return mockElev(lat,lng);}
+async function batchElev(pts){return Promise.all(pts.map(p=>getElev(p[0],p[1])));}
+
+// ============================================================
+// DRAWING
+// ============================================================
+function redraw(){
+  octx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+  assets.forEach(a=>{
+    if(a.type==='radar'){drawCircle(a.lat,a.lng,a.rangeKm,'rgba(95,208,138,0.18)','rgba(95,208,138,0.7)');}
+    else{
+      drawCircle(a.lat,a.lng,a.warnKm,'rgba(224,82,74,0.07)','rgba(224,82,74,0.35)',true);
+      drawCircle(a.lat,a.lng,a.engKm,'rgba(224,82,74,0.20)','rgba(224,82,74,0.9)');
+    }
+  });
+  if(waypoints.length>1){
+    octx.beginPath();
+    octx.setLineDash([7,5]);
+    octx.strokeStyle='rgba(224,168,56,0.8)';
+    octx.lineWidth=2;
+    waypoints.forEach((w,i)=>{const[x,y]=ll2px(w.lat,w.lng);if(i===0)octx.moveTo(x,y);else octx.lineTo(x,y);});
+    octx.stroke();
+    octx.setLineDash([]);
+  }
+}
+function drawCircle(lat,lng,rKm,fill,stroke,dashed){
+  const segs=64,pts=[];
+  for(let i=0;i<=segs;i++){const p=destPt(lat,lng,i*(360/segs),rKm);pts.push(ll2px(p[0],p[1]));}
+  octx.beginPath();
+  pts.forEach((p,i)=>{if(i===0)octx.moveTo(p[0],p[1]);else octx.lineTo(p[0],p[1]);});
+  octx.closePath();
+  octx.fillStyle=fill;octx.fill();
+  if(dashed)octx.setLineDash([4,4]);
+  octx.strokeStyle=stroke;octx.lineWidth=1.2;octx.stroke();
+  if(dashed)octx.setLineDash([]);
+}
+
+// ============================================================
+// ASSET MANAGEMENT
+// ============================================================
+function addAsset(lat,lng,type,template){
+  const id='a'+(assetSeq++);
+  const a={id,type,lat,lng,...template};
+  assets.push(a);
+  rebuildAssetMarkers();
+  renderSetupTab();
+  scheduleRedraw();
+  return a;
+}
+function removeAsset(id){assets=assets.filter(a=>a.id!==id);rebuildAssetMarkers();renderSetupTab();scheduleRedraw();}
+function makeAssetIcon(a){
+  const color=a.type==='radar'?'#5fd08a':'#e0524a';
+  const g=a.type==='radar'?'\u25CE':'X';
+  return L.divIcon({className:'',html:'<div style="width:24px;height:24px;border-radius:50%;background:'+color+'22;color:'+color+';border:2px solid '+color+';display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:11px;font-weight:700;box-shadow:0 0 6px rgba(0,0,0,.5);">'+g+'</div>',iconSize:[24,24],iconAnchor:[12,12]});
+}
+function rebuildAssetMarkers(){
+  assetLayer.clearLayers();
+  assets.forEach(a=>{
+    const m=L.marker([a.lat,a.lng],{icon:makeAssetIcon(a),draggable:true});
+    m.bindTooltip(a.name,{permanent:true,direction:'right',offset:[13,0],opacity:.9});
+    m.on('drag',e=>{a.lat=e.target.getLatLng().lat;a.lng=e.target.getLatLng().lng;scheduleRedraw();});
+    m.on('dragend',()=>renderSetupTab());
+    m.addTo(assetLayer);
+  });
+}
+
+// ============================================================
+// WAYPOINTS
+// ============================================================
+function addWaypoint(lat,lng){
+  const acAlt=parseFloat(document.getElementById('ac-alt').value)||150;
+  waypoints.push({lat,lng,altM:acAlt});
+  const idx=waypoints.length-1;
+  const m=L.circleMarker([lat,lng],{radius:7,color:'#0a0d0d',fillColor:'#e0a838',fillOpacity:1,weight:2});
+  m.bindTooltip('WP '+(idx+1),{permanent:true,direction:'top',offset:[0,-8],opacity:.9});
+  m.addTo(wpLayer);
+  wpMarkers.push(m);
+  if(pathLine){map.removeLayer(pathLine);pathLine=null;}
+  renderSetupTab();
+  scheduleRedraw();
+}
+function clearPath(){
+  waypoints=[];
+  wpMarkers.forEach(m=>map.removeLayer(m));
+  wpMarkers=[];
+  if(pathLine){map.removeLayer(pathLine);pathLine=null;}
+  renderSetupTab();
+  scheduleRedraw();
+  toast('Threat path cleared');
+}
+
+// ============================================================
+// BUILD ASSET LIBRARY UI
+// ============================================================
+RADAR_LIB.forEach(r=>{
+  const b=document.createElement('button');
+  b.className='asset-btn';
+  b.innerHTML=r.name+'<small>Detection range '+r.rangeKm+' km</small>';
+  b.addEventListener('click',()=>{
+    mode='radar'; document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector('[data-mode="radar"]').classList.add('active');
+    document.getElementById('crosshair-hint').style.display='none';
+    toast('Click map to place '+r.name);
+    map.once('click',e=>{addAsset(e.latlng.lat,e.latlng.lng,'radar',{name:r.name,rangeKm:r.rangeKm,color:r.color});
+      mode='select';document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode==='select'));
+    });
+  });
+  document.getElementById('lib-radar').appendChild(b);
+});
+GBAD_LIB.forEach(g=>{
+  const b=document.createElement('button');
+  b.className='asset-btn';
+  b.innerHTML=g.name+'<small>Engage '+g.engKm+' km &bull; '+g.minAltM+'\u2013'+g.maxAltM+' m alt</small>';
+  b.addEventListener('click',()=>{
+    mode='gbad'; document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector('[data-mode="gbad"]').classList.add('active');
+    document.getElementById('crosshair-hint').style.display='none';
+    toast('Click map to place '+g.name);
+    map.once('click',e=>{addAsset(e.latlng.lat,e.latlng.lng,'gbad',{name:g.name,engKm:g.engKm,warnKm:g.warnKm,minAltM:g.minAltM,maxAltM:g.maxAltM,reactionS:g.reactionS,reloadS:g.reloadS,shotsBeforeReload:g.shotsBeforeReload,color:g.color});
+      mode='select';document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode==='select'));
+    });
+  });
+  document.getElementById('lib-gbad').appendChild(b);
+});
+
+// ============================================================
+// MODE BUTTONS
+// ============================================================
+document.querySelectorAll('.mode-btn[data-mode]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    mode=btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b===btn));
+    const hint=document.getElementById('crosshair-hint');
+    hint.style.display=mode==='waypoint'?'block':'none';
+    if(mode==='waypoint')hint.textContent='CLICK MAP TO ADD WAYPOINT';
+  });
+});
+map.on('click',e=>{
+  if(mode==='waypoint'){addWaypoint(e.latlng.lat,e.latlng.lng);}
+});
+document.getElementById('btn-clear-path').addEventListener('click',clearPath);
+document.getElementById('ac-type').addEventListener('change',e=>{
+  const ac=AC_DEFAULTS[e.target.value];
+  document.getElementById('ac-speed').value=ac.speedKmh;
+  document.getElementById('ac-alt').value=ac.altM;
+  threatType=e.target.value;
+});
+
+// ============================================================
+// RIGHT PANEL TABS
+// ============================================================
+document.querySelectorAll('.rp-tab').forEach(t=>t.addEventListener('click',()=>{
+  currentTab=t.dataset.tab;
+  document.querySelectorAll('.rp-tab').forEach(x=>x.classList.toggle('active',x===t));
+  if(currentTab==='setup')renderSetupTab();
+  else renderResultsTab();
+}));
+
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+function sl(txt){const d=el('div','section-label',txt);return d;}
+function ro(label,val,cls){const d=el('div','readout '+(cls||''));d.innerHTML='<span>'+label+'</span><b>'+val+'</b>';return d;}
+
+function renderSetupTab(){
+  const body=document.getElementById('rp-body');
+  body.innerHTML='';
+  body.appendChild(sl('Placed assets ('+assets.length+')'));
+  if(assets.length===0){body.appendChild(el('div','empty-state','Place radars and GBAD assets on the map using the asset library on the left.'));} 
+  else{
+    assets.forEach(a=>{
+      const row=el('div','asset-list-item');
+      const dot=el('span','adot');dot.style.background=a.type==='radar'?'#5fd08a':'#e0524a';
+      const name=el('span','aname',a.name);
+      const del=el('button','adelete','✕');
+      del.addEventListener('click',()=>removeAsset(a.id));
+      row.appendChild(dot);row.appendChild(name);row.appendChild(del);
+      body.appendChild(row);
+    });
+  }
+  body.appendChild(sl('Threat path ('+waypoints.length+' waypoints)'));
+  if(waypoints.length===0){body.appendChild(el('div','empty-state','Select "+ Waypoint" from the top bar and tap the map to define the threat ingress route.'));}
+  else{
+    waypoints.forEach((w,i)=>{
+      const row=el('div','waypoint-item');
+      row.appendChild(el('span','wi','WP'+(i+1)));
+      const lbl=el('span','wl',w.lat.toFixed(3)+', '+w.lng.toFixed(3));
+      const altInput=el('input');
+      altInput.className='walt';altInput.type='number';altInput.value=w.altM;altInput.title='Altitude AGL (m)';
+      altInput.addEventListener('change',e=>{w.altM=parseFloat(e.target.value)||w.altM;});
+      const del=el('button','wdel','✕');
+      del.addEventListener('click',()=>{
+        waypoints.splice(i,1);
+        map.removeLayer(wpMarkers[i]);wpMarkers.splice(i,1);
+        renderSetupTab();scheduleRedraw();
+      });
+      row.appendChild(lbl);row.appendChild(altInput);row.appendChild(del);
+      body.appendChild(row);
+    });
+    const ac=AC_DEFAULTS[document.getElementById('ac-type').value];
+    const spd=parseFloat(document.getElementById('ac-speed').value)||ac.speedKmh;
+    const pts=waypoints.map(w=>[w.lat,w.lng]);
+    const{total}=pathDistances(pts);
+    const flightTimeS=total/(spd/3600);
+    body.appendChild(ro('Path length',total.toFixed(1)+' km'));
+    body.appendChild(ro('Est. flight time',flightTimeS.toFixed(0)+' s @ '+spd+' km/h'));
+  }
+}
+
+// --- live results panel, called from stepSimTo during playback ---
+let _lastLiveT = -1;
+function initLiveResultsPanel(){
+  _lastLiveT = -1;
+  const body=document.getElementById('rp-body');
+  body.innerHTML='';
+  body.appendChild(sl('Simulation outcome'));
+  const outcomeWrap=el('div'); outcomeWrap.id='live-outcome';
+  outcomeWrap.appendChild(ro('Result','Running\u2026'));
+  outcomeWrap.appendChild(ro('Flight time',simData.totalTimeS.toFixed(0)+' s'));
+  body.appendChild(outcomeWrap);
+  body.appendChild(sl('Live events'));
+  const evWrap=el('div'); evWrap.id='live-events';
+  evWrap.appendChild(el('div','empty-state','Events will appear as they happen\u2026'));
+  body.appendChild(evWrap);
+  body.appendChild(sl('Per-asset status'));
+  const assetWrap=el('div'); assetWrap.id='live-assets';
+  assets.forEach(a=>{
+    const row=ro(a.name.split('(')[0].trim(),a.type==='radar'?'Watching\u2026':'Standing by\u2026');
+    row.id='asset-row-'+a.id;
+    assetWrap.appendChild(row);
+  });
+  body.appendChild(assetWrap);
+}
+function updateLiveResultsPanel(currentT, isFinished){
+  if(!simData) return;
+  const notable=simData.events.filter(e=>['detect','engage','intercept','evade','miss'].includes(e.type)&&e.t<=currentT);
+  const evWrap=document.getElementById('live-events');
+  if(evWrap){
+    const newEvents=notable.filter(e=>e.t>_lastLiveT);
+    if(evWrap.querySelector('.empty-state')&&newEvents.length>0) evWrap.innerHTML='';
+    newEvents.forEach(ev=>{
+      const row=el('div','event-item live-event');
+      row.appendChild(el('div','et '+ev.type,'T+'+ev.t.toFixed(1)+'s \u2014 '+ev.message));
+      evWrap.insertBefore(row, evWrap.firstChild);
+    });
+  }
+  // Update per-asset rows
+  assets.forEach(a=>{
+    const row=document.getElementById('asset-row-'+a.id);
+    if(!row) return;
+    const b=row.querySelector('b');
+    if(!b) return;
+    const eventsForAsset=simData.events.filter(e=>e.assetId===a.id&&e.t<=currentT);
+    const lastDetect=eventsForAsset.filter(e=>e.type==='detect').pop();
+    const lastEngage=eventsForAsset.filter(e=>e.type==='engage').pop();
+    const lastIntercept=eventsForAsset.filter(e=>e.type==='intercept').pop();
+    const inEnv=eventsForAsset.some(e=>e.type==='in-envelope');
+    if(lastIntercept){b.textContent='INTERCEPTED target at T+'+lastIntercept.t.toFixed(0)+'s';b.style.color='var(--red)';}
+    else if(lastEngage){b.textContent='Fired at T+'+lastEngage.t.toFixed(0)+'s';b.style.color='var(--amber)';}
+    else if(inEnv){b.textContent='Target in envelope \u2014 reacting';b.style.color='var(--amber)';}
+    else if(lastDetect){b.textContent='Detected at T+'+lastDetect.t.toFixed(0)+'s';b.style.color='var(--scan)';}
+  });
+  _lastLiveT=currentT;
+  if(isFinished){
+    const s=simData.summary;
+    const ow=document.getElementById('live-outcome');
+    if(ow){
+      ow.innerHTML='';
+      ow.appendChild(ro('Result',s.intercepted?'INTERCEPTED':'EVADED ALL ASSETS',s.intercepted?'bad':'ok'));
+      ow.appendChild(ro('Flight time',simData.totalTimeS.toFixed(0)+' s'));
+      if(s.firstDetectedT!=null)ow.appendChild(ro('First detection','T+'+s.firstDetectedT.toFixed(0)+'s','ok'));
+      if(s.firstEngagementT!=null)ow.appendChild(ro('First engagement','T+'+s.firstEngagementT.toFixed(0)+'s'));
+      if(s.intercepted)ow.appendChild(ro('Intercepted at','T+'+s.interceptedT.toFixed(0)+'s by '+s.interceptedBy,'bad'));
+      // Training insight
+      const d=el('div');d.style.cssText='font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px;';
+      d.textContent=buildTrainingInsight(simData);
+      ow.appendChild(d);
+    }
+  }
+}
+function renderResultsTab(){
+  const body=document.getElementById('rp-body');
+  body.innerHTML='';
+  if(!simData){
+    body.appendChild(el('div','empty-state','Run the simulation to see results here. Place assets, draw a threat path, then click "Run Simulation".'));
+    return;
+  }
+  // Show complete final results (called when switching tab after sim ends)
+  const s=simData.summary;
+  body.appendChild(sl('Simulation outcome'));
+  body.appendChild(ro('Result',s.intercepted?'INTERCEPTED':'EVADED ALL ASSETS',s.intercepted?'bad':'ok'));
+  body.appendChild(ro('Flight time',simData.totalTimeS.toFixed(0)+' s'));
+  if(s.firstDetectedT!=null)body.appendChild(ro('First radar detection','T+'+s.firstDetectedT.toFixed(0)+'s'));
+  else body.appendChild(ro('Radar detection','None','bad'));
+  if(s.firstEngagementT!=null)body.appendChild(ro('First engagement','T+'+s.firstEngagementT.toFixed(0)+'s'));
+  else body.appendChild(ro('Engagements','None','warn'));
+  if(s.intercepted)body.appendChild(ro('Intercepted at','T+'+s.interceptedT.toFixed(0)+'s by '+s.interceptedBy));
+  body.appendChild(sl('Per-asset breakdown'));
+  assets.filter(a=>a.type==='radar').forEach(a=>{
+    const detects=simData.events.filter(e=>e.assetId===a.id&&e.type==='detect');
+    if(detects.length>0)body.appendChild(ro(a.name.split(' ')[0],'Detected T+'+detects[0].t.toFixed(0)+'s ('+((detects[detects.length-1].t-detects[0].t)).toFixed(0)+'s window)','ok'));
+    else body.appendChild(ro(a.name.split(' ')[0],'Never in range / LOS blocked','bad'));
+  });
+  assets.filter(a=>a.type==='gbad').forEach(a=>{
+    const shots=simData.events.filter(e=>e.assetId===a.id&&e.type==='engage');
+    const hits=simData.events.filter(e=>e.assetId===a.id&&e.type==='intercept');
+    const envEv=simData.events.filter(e=>e.assetId===a.id&&e.type==='in-envelope');
+    const winS=envEv.length>0?(envEv[envEv.length-1].t-envEv[0].t):0;
+    if(shots.length>0)body.appendChild(ro(a.name.split(' ')[0],shots.length+' shot(s), '+hits.length+' hit(s), '+winS.toFixed(0)+'s window',hits.length>0?'bad':'warn'));
+    else if(envEv.length>0)body.appendChild(ro(a.name.split(' ')[0],'In envelope but no shot fired','warn'));
+    else body.appendChild(ro(a.name.split(' ')[0],'Never in engagement envelope','muted'));
+  });
+  body.appendChild(sl('Training insight'));
+  const d=el('div');d.style.cssText='font-size:11.5px;color:var(--muted);line-height:1.6;';d.textContent=buildTrainingInsight(simData);
+  body.appendChild(d);
+  body.appendChild(sl('Events log'));
+  const notable=simData.events.filter(e=>['detect','engage','intercept','evade','miss'].includes(e.type));
+  if(notable.length===0){body.appendChild(el('div','empty-state','No engagement events recorded.'));}
+  else notable.forEach(ev=>{
+    const row=el('div','event-item');
+    row.appendChild(el('div','et '+ev.type,'T+'+ev.t.toFixed(1)+'s \u2014 '+ev.message));
+    body.appendChild(row);
+  });
+}
+function buildTrainingInsight(sd){
+  const s=sd.summary;
+  if(!s.intercepted){
+    const noEnv=assets.filter(a=>a.type==='gbad').every(a=>!sd.events.some(e=>e.assetId===a.id&&e.type==='in-envelope'));
+    if(noEnv)return 'The threat flew outside all GBAD engagement envelopes entirely. Consider moving assets further along the expected threat axis, or positioning them on higher ground to extend the coverage arc.';
+    const noDetect=!s.firstDetectedT;
+    if(noDetect)return 'No radar detected the aircraft. GBAD assets cannot engage without a radar cue in this simulation. Position radars to provide early warning along the threat ingress corridor.';
+    return 'The threat was detected but evaded all GBAD fire. Check if the aircraft passed through an altitude gap (below MANPADS ceiling), slipped through a terrain-masked dead zone, or transited the envelope too quickly for a reaction. Moving the radar forward to give earlier cue, or adding a second GBAD position, are typical solutions.';
+  }
+  return 'The threat was intercepted at T+'+s.interceptedT.toFixed(0)+'s by '+s.interceptedBy+'. The engagement window was '+sd.events.filter(e=>e.type==='in-envelope'&&e.assetId===sd.events.find(x=>x.type==='intercept')?.assetId).length*SIM_STEP_S+' seconds. Try varying the threat speed or altitude to stress-test the siting decision.';
+}
+
+// ============================================================
+// PRE-FLIGHT COMPUTATION
+// ============================================================
+async function runPreflight(){
+  const statusEl=document.getElementById('preflight-status');
+  if(waypoints.length<2){toast('Draw a threat path first (at least 2 waypoints)');return false;}
+  if(assets.filter(a=>a.type==='gbad').length===0){toast('Place at least one GBAD asset first');return false;}
+  statusEl.textContent='Sampling path…';
+  const spd=parseFloat(document.getElementById('ac-speed').value)||150;
+  const pts=waypoints.map(w=>[w.lat,w.lng]);
+  const{c,total}=pathDistances(pts);
+  const totalTimeS=total/(spd/3600);
+  const steps=Math.ceil(totalTimeS/SIM_STEP_S);
+  const stepDistKm=total/steps;
+  statusEl.textContent='Fetching terrain for '+((steps*assets.length)*LOS_TERRAIN_STEPS)+' points…';
+  // Build all points we need elevation for
+  const allPts=[];
+  const sampleMeta=[];
+  // Asset ground elevations
+  const assetElevStart=allPts.length;
+  assets.forEach(a=>allPts.push([a.lat,a.lng]));
+  // Per step, per asset: LOS ray sample points
+  for(let si=0;si<=steps;si++){
+    const d=Math.min(si*stepDistKm,total);
+    const t=si*SIM_STEP_S;
+    const pos=sampleAtDist(pts,c,d);
+    const acAlt=altAtDist(waypoints,c,d);
+    const acGroundStart=allPts.length;
+    allPts.push(pos); // aircraft ground elevation
+    const rayStarts=[];
+    assets.forEach((a,ai)=>{
+      const rStart=allPts.length;
+      for(let k=1;k<LOS_TERRAIN_STEPS;k++){
+        const t2=k/LOS_TERRAIN_STEPS;
+        allPts.push([a.lat+(pos[0]-a.lat)*t2, a.lng+(pos[1]-a.lng)*t2]);
+      }
+      rayStarts.push(rStart);
+    });
+    sampleMeta.push({t,d,pos,acAlt,acGroundStart,rayStarts});
+  }
+  // Fetch all elevations in one batch
+  const elevs=await batchElev(allPts);
+  statusEl.textContent='Computing LOS and engagement windows…';
+  const assetElev=assets.map((_,i)=>elevs[assetElevStart+i]);
+  // Build per-sample visibility data
+  const samples=[];
+  const radarIds=new Set(assets.filter(a=>a.type==='radar').map(a=>a.id));
+  sampleMeta.forEach(meta=>{
+    const {t,d,pos,acAlt,acGroundStart,rayStarts}=meta;
+    const groundAtAc=elevs[acGroundStart];
+    const acASL=groundAtAc+acAlt;
+    const spd2=parseFloat(document.getElementById('ac-speed').value)||150;
+    const bearing=d<total ? bearingDeg(pos[0],pos[1],...sampleAtDist(pts,c,Math.min(d+stepDistKm,total))) : 0;
+    const vis={};
+    assets.forEach((a,ai)=>{
+      const dKm=Math.max(haversineKm(a.lat,a.lng,pos[0],pos[1]),0.01);
+      const assetASL=assetElev[ai]+(a.type==='gbad'?2:6);
+      // LOS check: is there terrain between asset and aircraft?
+      let losBlocked=false;
+      const rStart=rayStarts[ai];
+      for(let k=1;k<LOS_TERRAIN_STEPS;k++){
+        const tFrac=k/LOS_TERRAIN_STEPS;
+        const g=elevs[rStart+k-1];
+        const losH=assetASL+(acASL-assetASL)*tFrac;
+        const d1=dKm*tFrac,d2=dKm*(1-tFrac);
+        const bulge=curvatureBulgeM(d1,d2);
+        if(g>(losH-bulge)-2){losBlocked=true;break;}
+      }
+      vis[a.id]={dKm,losBlocked,acASL,acAlt};
+    });
+    samples.push({t,d,pos,acAlt,acASL:groundAtAc+acAlt,bearing,vis});
+  });
+  statusEl.textContent='Resolving simulation events…';
+  // Run simulation pass: compute events
+  const events=[];
+  const assetStates={};
+  assets.forEach(a=>{assetStates[a.id]={state:'ready',reloadUntil:0,shotsFired:0};});
+  let intercepted=false,interceptedT=null,interceptedBy=null;
+  let firstDetectedT=null,firstEngagementT=null;
+  const radarDetected=new Set();
+  samples.forEach(s=>{
+    if(intercepted)return;
+    // Radar detection phase
+    assets.filter(a=>a.type==='radar').forEach(a=>{
+      const v=s.vis[a.id];
+      const inRange=v.dKm<=a.rangeKm;
+      const visible=!v.losBlocked;
+      if(inRange&&visible){
+        if(!radarDetected.has(a.id)){radarDetected.add(a.id);events.push({t:s.t,type:'detect',assetId:a.id,message:'Detected by '+a.name+' at '+v.dKm.toFixed(1)+' km'});}
+        if(firstDetectedT==null)firstDetectedT=s.t;
+      }
+    });
+    // GBAD engagement phase
+    const hasCue=RADAR_CUEING ? radarDetected.size>0 : true;
+    assets.filter(a=>a.type==='gbad').forEach(a=>{
+      const v=s.vis[a.id];
+      const st=assetStates[a.id];
+      if(st.state==='reloading'&&s.t>=st.reloadUntil)st.state='ready';
+      const inHorizRange=v.dKm<=a.engKm;
+      const inAltEnv=v.acAlt>=a.minAltM&&v.acAlt<=a.maxAltM;
+      const visible=!v.losBlocked;
+      const inEnvelope=inHorizRange&&inAltEnv&&visible;
+      if(inEnvelope){events.push({t:s.t,type:'in-envelope',assetId:a.id,message:a.name+' has target in envelope'});}
+      if(inEnvelope&&hasCue&&st.state==='ready'&&s.t>=st.reloadUntil){
+        // Can this asset get a shot off? Needs reaction time first
+        if(firstEngagementT==null)firstEngagementT=s.t;
+        const reactDelay=a.reactionS;
+        // Check if target stays in envelope for at least reaction time
+        const engageT=s.t+reactDelay;
+        if(!intercepted){
+          st.state='reloading';st.reloadUntil=engageT+a.reloadS;st.shotsFired++;
+          events.push({t:engageT,type:'engage',assetId:a.id,message:a.name+' fires at T+'+engageT.toFixed(0)+'s ('+v.dKm.toFixed(1)+' km, alt '+v.acAlt.toFixed(0)+'m AGL)'});
+          // Intercept probability: simplified — if in envelope and LOS clear, it's a hit
+          intercepted=true;interceptedT=engageT+0.5;interceptedBy=a.name;
+          events.push({t:interceptedT,type:'intercept',assetId:a.id,message:'INTERCEPTED by '+a.name+' at T+'+interceptedT.toFixed(0)+'s'});
+        }
+      } else if(inHorizRange&&!inAltEnv&&visible){
+        events.push({t:s.t,type:'miss',assetId:a.id,message:a.name+': aircraft altitude '+v.acAlt+'m AGL is '+(v.acAlt<a.minAltM?'below minimum ('+a.minAltM+'m)':'above maximum ('+a.maxAltM+'m)')});
+      }
+    });
+  });
+  if(!intercepted){
+    events.push({t:samples[samples.length-1]?.t||0,type:'evade',assetId:null,message:'Threat exited the area unengaged'});
+  }
+  simData={
+    samples,events,totalTimeS,
+    summary:{intercepted,interceptedT,interceptedBy,firstDetectedT,firstEngagementT}
+  };
+  statusEl.textContent=intercepted?'Pre-flight complete \u2014 intercept predicted':'Pre-flight complete \u2014 threat evades';
+  updateTerrainReadout();
+  return true;
+}
+function updateTerrainReadout(){
+  const el=document.getElementById('terrain-source-readout');
+  if(terrainSource==='mapbox') el.textContent='Source: Mapbox Terrain-RGB (real DEM)';
+  else if(MAPBOX_TOKEN) el.textContent='Source: Token loaded \u2014 will use Mapbox on next simulation run';
+  else el.textContent='Source: Simulated (no token entered)';
+  el.style.color=terrainSource==='mapbox'?'var(--scan)':'var(--amber)';
+}
+
+// ============================================================
+// SIMULATION PLAYBACK
+// ============================================================
+let _interceptFlashed = false;
+function triggerInterceptFlash(msg){
+  const el=document.getElementById('intercept-flash');
+  const det=document.getElementById('flash-detail');
+  if(!el||_interceptFlashed) return;
+  _interceptFlashed=true;
+  if(det) det.textContent=msg||'';
+  el.style.opacity='1';
+  setTimeout(()=>{el.style.transition='opacity .8s ease';el.style.opacity='0';},1800);
+}
+function getAircraftIcon(type,brg){
+  const color={helo:'#ff9d3d',jet:'#e0524a','drone-atk':'#b285e0','uas-small':'#b285e0'}[type]||'#ff9d3d';
+  // SVG aircraft arrow pointing up, rotated to bearing
+  const svg=`<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${brg}deg);filter:drop-shadow(0 0 3px rgba(0,0,0,.8))">
+    <polygon points="16,2 22,28 16,22 10,28" fill="${color}" stroke="#000" stroke-width="1.5"/>
+  </svg>`;
+  return L.divIcon({className:'',html:svg,iconSize:[32,32],iconAnchor:[16,16]});
+}
+let interceptMapMarkers = [];
+function showInterceptOnMap(lat, lng, byName, atTime){
+  // Red pulsing impact circle
+  const circle = L.circle([lat,lng],{radius:600,color:'#e0524a',fillColor:'#e0524a',fillOpacity:.3,weight:3,dashArray:'6,4'});
+  circle.addTo(simLayer);
+  interceptMapMarkers.push(circle);
+  // X icon label
+  const icon = L.divIcon({
+    className:'',
+    html:'<div style="background:#e0524a;color:#fff;font-family:monospace;font-size:11px;font-weight:700;padding:5px 9px;border-radius:3px;white-space:nowrap;box-shadow:0 0 12px rgba(224,82,74,.7);letter-spacing:1px;text-align:center;">'+
+         '&#10005; INTERCEPTED<br><span style="font-size:9px;opacity:.85;">'+byName+' at T+'+atTime.toFixed(0)+'s</span></div>',
+    iconSize:[140,40], iconAnchor:[70,50]
+  });
+  const lbl = L.marker([lat,lng],{icon, zIndexOffset:3000});
+  lbl.addTo(simLayer);
+  interceptMapMarkers.push(lbl);
+}
+function resetSimVisuals(){
+  if(aircraftMarker){map.removeLayer(aircraftMarker);aircraftMarker=null;}
+  engagementMarkers.forEach(m=>map.removeLayer(m));
+  engagementMarkers=[];
+  interceptMapMarkers.forEach(m=>map.removeLayer(m));
+  interceptMapMarkers=[];
+  drawTimelineBar(null);
+}
+function stepSimTo(frame){
+  if(!simData||frame>=simData.samples.length)return;
+  const s=simData.samples[frame];
+  const acType=document.getElementById('ac-type').value;
+  if(!aircraftMarker){
+    aircraftMarker=L.marker([s.pos[0],s.pos[1]],{icon:getAircraftIcon(acType,s.bearing),zIndexOffset:2000});
+    aircraftMarker.addTo(simLayer);
+  } else {
+    aircraftMarker.setLatLng([s.pos[0],s.pos[1]]);
+    aircraftMarker.setIcon(getAircraftIcon(acType,s.bearing));
+  }
+  // Draw engagement lines for events up to this time
+  engagementMarkers.forEach(m=>map.removeLayer(m));
+  engagementMarkers=[];
+  simData.events.forEach(ev=>{
+    if(ev.t>s.t)return;
+    if(ev.type==='intercept'&&ev.t<=s.t+0.6){
+      const a=assets.find(x=>x.id===ev.assetId);
+      if(a){
+        const line=L.polyline([[a.lat,a.lng],[s.pos[0],s.pos[1]]],{color:'#e0524a',weight:3,opacity:.7,dashArray:'4,3'});
+        line.addTo(simLayer);engagementMarkers.push(line);
+        const boom=L.circleMarker([s.pos[0],s.pos[1]],{radius:14,color:'#e0524a',fillColor:'#e0a838',fillOpacity:.7,weight:3});
+        boom.addTo(simLayer);engagementMarkers.push(boom);
+      }
+    }
+    if(ev.type==='engage'&&ev.t>s.t-3){
+      const a=assets.find(x=>x.id===ev.assetId);
+      if(a){
+        const line=L.polyline([[a.lat,a.lng],[s.pos[0],s.pos[1]]],{color:'#ff9d3d',weight:2,opacity:.5,dashArray:'3,4'});
+        line.addTo(simLayer);engagementMarkers.push(line);
+      }
+    }
+  });
+  document.getElementById('sim-counter').textContent='T+'+s.t.toFixed(0)+'s / alt '+s.acAlt.toFixed(0)+'m AGL';
+  drawTimelineBar(s.t);
+  // Live results update (only while sim is running, not during replay of finished sim)
+  if(currentTab==='results') updateLiveResultsPanel(s.t, false);
+  // Intercept flash
+  if(simData.summary.intercepted && simData.summary.interceptedT!=null && s.t>=simData.summary.interceptedT){
+    triggerInterceptFlash('by '+simData.summary.interceptedBy+' at T+'+simData.summary.interceptedT.toFixed(0)+'s');
+  }
+}
+function drawTimelineBar(currentT){
+  const cv=document.getElementById('timeline-canvas');
+  const ctx=cv.getContext('2d');
+  const W=cv.clientWidth||200,H=cv.clientHeight||40;
+  cv.width=W;cv.height=H;
+  ctx.clearRect(0,0,W,H);
+  if(!simData)return;
+  const total=simData.totalTimeS;
+  function tx(t){return Math.max(0,Math.min(W-1,(t/total)*W));}
+  // Track bands
+  const radarEv=simData.events.filter(e=>e.type==='detect');
+  const envEv=simData.events.filter(e=>e.type==='in-envelope');
+  // Radar detection band (amber)
+  if(radarEv.length>0){
+    ctx.fillStyle='rgba(224,168,56,0.35)';
+    ctx.fillRect(tx(radarEv[0].t),2,tx(radarEv[radarEv.length-1].t)-tx(radarEv[0].t),10);
+  }
+  // Engagement envelope band (red)
+  if(envEv.length>0){
+    ctx.fillStyle='rgba(224,82,74,0.4)';
+    ctx.fillRect(tx(envEv[0].t),14,tx(envEv[envEv.length-1].t)-tx(envEv[0].t),10);
+  }
+  // Event markers
+  simData.events.forEach(ev=>{
+    let c=null;
+    if(ev.type==='engage')c='#ff9d3d';
+    else if(ev.type==='intercept')c='#e0524a';
+    else if(ev.type==='evade')c='#5fd08a';
+    if(c){ctx.fillStyle=c;ctx.fillRect(tx(ev.t)-2,0,4,H);}
+  });
+  // Legend text
+  ctx.fillStyle='#7d8f8a';ctx.font='9px monospace';
+  ctx.fillText('RADAR',2,10);
+  ctx.fillText('GBAD',2,22);
+  // Current time cursor
+  if(currentT!=null){
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(tx(currentT),0);ctx.lineTo(tx(currentT),H);ctx.stroke();
+  }
+  // Time labels
+  [0,0.25,0.5,0.75,1].forEach(f=>{
+    ctx.fillStyle='#3a4747';ctx.fillText(Math.round(f*total)+'s',tx(f*total)+2,H-2);
+  });
+}
+
+let playSpeedMult=5;
+function finishSim(intercepted){
+  simState.running=false;
+  document.getElementById('btn-run-sim').disabled=false;
+  document.getElementById('btn-pause-sim').disabled=true;
+  if(intercepted){
+    // Find and freeze aircraft at exact intercept position, show impact marker
+    const s=simData.summary;
+    let interceptPos=null;
+    let minDiff=Infinity;
+    simData.samples.forEach(sp=>{
+      const diff=Math.abs(sp.t-s.interceptedT);
+      if(diff<minDiff){minDiff=diff;interceptPos=sp;}
+    });
+    if(interceptPos){
+      // Freeze aircraft icon at intercept location
+      if(aircraftMarker) map.removeLayer(aircraftMarker);
+      aircraftMarker=null;
+      // Red stopped icon
+      const deadIcon=L.divIcon({className:'',
+        html:'<div style="width:32px;height:32px;background:#e0524a33;border-radius:50%;border:3px solid #e0524a;display:flex;align-items:center;justify-content:center;font-size:16px;">&#10005;</div>',
+        iconSize:[32,32],iconAnchor:[16,16]});
+      const frozenMarker=L.marker([interceptPos.pos[0],interceptPos.pos[1]],{icon:deadIcon,zIndexOffset:3000});
+      frozenMarker.addTo(simLayer);
+      interceptMapMarkers.push(frozenMarker);
+      showInterceptOnMap(interceptPos.pos[0],interceptPos.pos[1],s.interceptedBy,s.interceptedT);
+    }
+    toast('\u274C INTERCEPTED by '+s.interceptedBy+' at T+'+s.interceptedT.toFixed(0)+'s');
+  } else {
+    toast('\u2705 Simulation complete \u2014 threat evaded all assets');
+  }
+  if(currentTab==='results') updateLiveResultsPanel(simData.totalTimeS, true);
+}
+function animLoop(wallMs){
+  if(!simState.running)return;
+  if(simState.lastWallMs==null){simState.lastWallMs=wallMs;}
+  const dtWall=(wallMs-simState.lastWallMs)/1000;
+  simState.lastWallMs=wallMs;
+  simState.accumS+=dtWall*playSpeedMult;
+  const targetFrame=Math.floor(simState.accumS/SIM_STEP_S);
+  // Check if we've reached or passed the intercept time — stop here
+  if(simData.summary.intercepted && simData.summary.interceptedT!=null){
+    const currentT=(targetFrame<simData.samples.length)?simData.samples[Math.min(targetFrame,simData.samples.length-1)].t:simData.totalTimeS;
+    if(currentT>=simData.summary.interceptedT){
+      // Step to the exact intercept frame then freeze
+      const interceptFrame=simData.samples.reduce((best,s,i)=>Math.abs(s.t-simData.summary.interceptedT)<Math.abs(simData.samples[best].t-simData.summary.interceptedT)?i:best,0);
+      stepSimTo(interceptFrame);
+      finishSim(true);
+      return;
+    }
+  }
+  if(targetFrame>=simData.samples.length){
+    stepSimTo(simData.samples.length-1);
+    finishSim(false);
+    return;
+  }
+  if(targetFrame!==simState.frame){simState.frame=targetFrame;stepSimTo(targetFrame);}
+  simState.rafId=requestAnimationFrame(animLoop);
+}
+
+document.getElementById('btn-run-sim').addEventListener('click',async()=>{
+  resetSimVisuals();
+  simLayer.clearLayers();
+  simData=null;
+  _interceptFlashed=false;
+  document.getElementById('btn-run-sim').disabled=true;
+  const ok=await runPreflight();
+  if(!ok){document.getElementById('btn-run-sim').disabled=false;return;}
+  // Switch to Results tab and init the live panel BEFORE animation starts
+  currentTab='results';
+  document.querySelectorAll('.rp-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='results'));
+  initLiveResultsPanel();
+  simState={running:true,frame:0,rafId:null,lastWallMs:null,accumS:0};
+  playSpeedMult=parseInt(document.getElementById('sim-speed').value)||5;
+  document.getElementById('btn-pause-sim').disabled=false;
+  simState.rafId=requestAnimationFrame(animLoop);
+});
+document.getElementById('btn-pause-sim').addEventListener('click',()=>{
+  if(simState.running){simState.running=false;document.getElementById('btn-pause-sim').textContent='▶ Resume';}
+  else{simState.running=true;simState.lastWallMs=null;simState.rafId=requestAnimationFrame(animLoop);document.getElementById('btn-pause-sim').textContent='❙❙ Pause';}
+});
+document.getElementById('btn-reset-sim').addEventListener('click',()=>{
+  simState.running=false;if(simState.rafId)cancelAnimationFrame(simState.rafId);
+  _interceptFlashed=false;
+  const flashEl=document.getElementById('intercept-flash');
+  if(flashEl){flashEl.style.transition='';flashEl.style.opacity='0';}
+  resetSimVisuals();simLayer.clearLayers();
+  simState={running:false,frame:0,rafId:null,lastWallMs:null,accumS:0};
+  document.getElementById('btn-run-sim').disabled=false;
+  document.getElementById('btn-pause-sim').disabled=true;
+  document.getElementById('btn-pause-sim').textContent='❙❙ Pause';
+  document.getElementById('preflight-status').textContent='';
+  currentTab='setup';
+  document.querySelectorAll('.rp-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='setup'));
+  renderSetupTab();
+  toast('Simulation reset');
+});
+
+// ============================================================
+// MAPBOX TOKEN
+// ============================================================
+(function(){
+  const input=document.getElementById('mapbox-token-input');
+  try{const s=localStorage.getItem('cooperage_mapbox_token');if(s){MAPBOX_TOKEN=s;input.value=s;updateTerrainReadout();}}catch(e){}
+  document.getElementById('btn-mapbox-apply').addEventListener('click',()=>{
+    MAPBOX_TOKEN=input.value.trim();
+    try{if(MAPBOX_TOKEN)localStorage.setItem('cooperage_mapbox_token',MAPBOX_TOKEN);else localStorage.removeItem('cooperage_mapbox_token');}catch(e){}
+    tileCache.clear();updateTerrainReadout();
+    toast(MAPBOX_TOKEN?'Mapbox terrain enabled':'Mapbox token cleared');
+  });
+})();
+
+// ============================================================
+// MOBILE DRAWERS
+// ============================================================
+const leftEl=document.getElementById('leftrail'),rightEl=document.getElementById('rightpanel'),bkEl=document.getElementById('drawer-backdrop');
+function closeDrawers(){leftEl.classList.remove('open');rightEl.classList.remove('open');bkEl.classList.remove('show');}
+function openDrawer(el){closeDrawers();el.classList.add('open');bkEl.classList.add('show');}
+document.getElementById('btn-left-drawer').addEventListener('click',()=>openDrawer(leftEl));
+document.getElementById('btn-right-drawer').addEventListener('click',()=>openDrawer(rightEl));
+bkEl.addEventListener('click',closeDrawers);
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer=null;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2400);}
+
+// ============================================================
+// INIT
+// ============================================================
+resizeOverlay();
+renderSetupTab();
+drawTimelineBar(null);
+scheduleRedraw();
+map.whenReady(()=>{scheduleRedraw();});
+
+})();
+</script>
+</body>
+</html>
